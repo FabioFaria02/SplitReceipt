@@ -491,3 +491,23 @@ body { overscroll-behavior-y: none; }
   .btn:hover, .pill:hover, .option:hover, .item:hover { transform: none; }
   .item:hover { background: transparent; }
 }
+
+/* ---------- v4: nada pode sair da largura do ecrã ---------- */
+html, body { max-width: 100%; overflow-x: hidden; }
+@supports (overflow: clip) { html, body { overflow-x: clip; } }
+.app, .layout, .main, .sidebar, .panel, .receipt, .hero, .dropzone { min-width: 0; max-width: 100%; }
+.dz-actions .btn { min-width: 0; }
+.dz-actions .btn span { overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 560px) {
+  .dropzone:not(.big) .dz-actions, .dropzone.big .dz-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; width: 100%; }
+  .dropzone .dz-actions .btn { width: 100%; padding: 0 8px; gap: 6px; height: 42px; }
+  .dropzone .dz-actions #moreImportBtn { display: none; }
+  .dropzone.big .dz-actions .btn { height: 46px; }
+  .r-bar { gap: 5px; }
+  .r-bar .chip { white-space: normal; }
+  .hero-people .hp { max-width: 100%; }
+}
+@media (max-width: 380px) {
+  .dropzone .dz-actions .btn i { display: none; }
+  .bottom-bar button:not(.bb-main) { padding: 4px 10px; }
+}
