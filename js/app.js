@@ -40,6 +40,7 @@ let settings = {
 };
 let splits = load(KEYS.splits, []);
 let memory = load(KEYS.memory, {});
+let groups = load(KEYS.groups, []);
 let split = splits.find(s => s.id === load(KEYS.current, null)) || splits[0] || newSplit();
 
 const ui = {
@@ -47,6 +48,7 @@ const ui = {
   brush: [],
   jobs: [],
   openOwe: new Set(),
+  expanded: new Set(), // recibos abertos na vista partilhada
   readonly: false,
   backup: null, // estado guardado enquanto se vê um link partilhado
   sharedPayload: null,
@@ -76,6 +78,7 @@ function persist() {
   save(KEYS.people, people);
   save(KEYS.settings, settings);
   save(KEYS.memory, memory);
+  save(KEYS.groups, groups);
 }
 
 /* =========================================================
@@ -110,6 +113,16 @@ const participants = () => split.participants.map(person).filter(p => p.name !==
 const avatar = (p, cls = "") => `<span class="av ${cls}" style="--c:${p.color}">${esc(initials(p.name))}</span>`;
 const isMe = id => id === settings.meId;
 const nameOf = id => person(id).name;
+
+/** Grupos utilizáveis na divisão atual (membros que participam, nem vazio nem igual a "todos"). */
+function activeGroups() {
+  const set = new Set(split.participants);
+  return groups
+    .map(g => ({ ...g, members: g.members.filter(m => set.has(m)) }))
+    .filter(g => g.members.length && g.members.length < set.size);
+}
+const sameSet = (a, b) => a.length === b.length && a.every(x => b.includes(x));
+const isLocked = () => S && S.unassigned > 0.004;
 
 function storeColor(store) {
   const s = String(store || "").toLowerCase();
@@ -286,6 +299,7 @@ function renderBrushBar() {
     <div class="label"><i class="fa-solid fa-paintbrush"></i>Pincel</div>
     <div class="pills">
       <button class="pill all ${all ? "on" : ""}" data-act="brush-all">Todos</button>
+      ${activeGroups().map(g => `<button class="pill group ${sameSet(ui.brush, g.members) ? "on" : ""}" data-act="brush-group" data-g="${g.id}"><i class="fa-solid fa-user-group"></i>${esc(g.name)}</button>`).join("")}
       ${participants().map(p => `<button class="pill ${ui.brush.includes(p.id) ? "on" : ""}" style="--c:${p.color}" data-act="brush-person" data-p="${p.id}">${avatar(p)}${esc(p.name)}</button>`).join("")}
     </div>
     <button class="btn sm ghost" data-act="brush-off"><i class="fa-solid fa-xmark"></i> Fechar</button>
@@ -303,6 +317,7 @@ function renderReceipts() {
 }
 
 function renderReceipt(r) {
+  if (r.kind === "expense") return renderExpense(r);
   const b = S.byReceipt[r.id];
   const cur = r.currency;
   const parts = participants();
@@ -316,7 +331,8 @@ function renderReceipt(r) {
   const warnings = [...(r.warnings || [])];
   const meta = [r.date ? fmtDate(r.date) : "", r.time, r.location].filter(Boolean).map(esc).join(" · ");
 
-  return `<article class="receipt glass ${r.collapsed ? "collapsed" : ""}" data-r="${r.id}">
+  const collapsed = ui.readonly ? !ui.expanded.has(r.id) : r.collapsed;
+  return `<article class="receipt glass ${collapsed ? "collapsed" : ""}" data-r="${r.id}">
     <div class="r-head">
       <div class="r-logo" style="background:${storeColor(r.store)}">${esc(initials(r.store).slice(0, 2))}</div>
       <div class="r-title"><h3>${esc(r.store)}</h3><div class="meta">${meta || "Sem data"}</div></div>
@@ -353,10 +369,58 @@ function renderReceipt(r) {
   </article>`;
 }
 
+function rateChip(r, b) {
+  if (r.currency === "EUR") return "";
+  const label = r.eurCharged > 0 ? `Taxa real · 1 € = ${fmtNum(1 / b.factor, 2)} ${currencySymbol(r.currency)}`
+    : r.rate ? `1 € = ${fmtNum(1 / r.rate, r.currency === "HUF" ? 1 : 3)} ${currencySymbol(r.currency)}` : "Sem taxa de câmbio";
+  return `<button class="chip ${r.rate || r.eurCharged ? "" : "bad"}" data-act="r-edit" data-r="${r.id}"><i class="fa-solid fa-arrow-right-arrow-left"></i>${esc(label)}</button>`;
+}
+
+function renderExpense(r) {
+  const b = S.byReceipt[r.id];
+  const it = r.items[0];
+  const parts = participants();
+  const info = it ? b.perItem[it.id] : null;
+  const meta = [r.date ? fmtDate(r.date) : "", r.location].filter(Boolean).map(esc).join(" · ");
+  return `<article class="receipt expense glass" data-r="${r.id}">
+    <div class="r-head">
+      <div class="r-logo exp">${esc(it ? itemEmoji(it) : "💸")}</div>
+      <div class="r-title"><h3>${esc(r.store)}</h3><div class="meta"><span class="tag"><i class="fa-solid fa-pen-nib"></i>sem recibo</span>${meta}</div></div>
+      <div class="r-total"><strong>${eur(b.eurTotal)}</strong>${r.currency !== "EUR" ? `<span>${fmtMoney(b.computedTotal, r.currency)}</span>` : ""}</div>
+    </div>
+    <div class="r-bar">
+      <label class="payer"><i class="fa-solid fa-credit-card"></i> Pagou
+        <select data-payer="${r.id}" aria-label="Quem pagou">${parts.map(p => `<option value="${p.id}" ${p.id === r.payerId ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>
+      </label>
+      ${rateChip(r, b)}
+      <span class="spacer"></span>
+      <button class="icon-btn sm edit-only" data-act="r-edit" data-r="${r.id}" title="Editar despesa" aria-label="Editar despesa"><i class="fa-solid fa-pen"></i></button>
+      <button class="icon-btn sm edit-only" data-act="r-delete" data-r="${r.id}" title="Apagar despesa" aria-label="Apagar despesa"><i class="fa-regular fa-trash-can"></i></button>
+    </div>
+    ${it ? `<div class="item exp-item ${Object.keys(info.weights).length ? "" : "unassigned"}" data-r="${r.id}" data-i="${it.id}">${peoplePills(it, info, parts, r)}</div>` : ""}
+  </article>`;
+}
+
+function peoplePills(it, info, parts, r) {
+  const assigned = Object.keys(info.weights);
+  const allOn = parts.length > 0 && parts.every(p => info.weights[p.id] > 0);
+  const weightsEqual = new Set(Object.values(info.weights)).size <= 1;
+  const each = assigned.length > 1 && weightsEqual ? `<span class="tiny muted num each">${eur(info.eur / assigned.length)} cada</span>` : "";
+  return `<div class="item-people">
+      <button class="pill all mini ${allOn ? "on" : ""}" data-act="item-all">Todos</button>
+      ${activeGroups().map(g => `<button class="pill group mini ${weightsEqual && sameSet(assigned, g.members) ? "on" : ""}" data-act="item-group" data-g="${g.id}" title="${esc(g.members.map(nameOf).join(", "))}"><i class="fa-solid fa-user-group"></i>${esc(g.name)}</button>`).join("")}
+      ${parts.map(p => {
+        const w = info.weights[p.id];
+        return `<button class="pill mini ${w ? "on" : ""}" style="--c:${p.color}" data-act="item-person" data-p="${p.id}" aria-pressed="${!!w}">${avatar(p)}${esc(p.name)}${w && w !== 1 ? `<span class="w">×${fmtNum(w, w % 1 ? 1 : 0)}</span>` : ""}</button>`;
+      }).join("")}
+      <button class="icon-btn sm edit-only" data-act="${r.kind === "expense" ? "r-edit" : "item-edit"}" data-r="${r.id}" title="Partes diferentes por pessoa" aria-label="Editar partes"><i class="fa-solid fa-sliders"></i></button>
+      ${each}
+    </div>`;
+}
+
 function renderItem(r, it, info, parts) {
   const cur = r.currency;
   const assigned = Object.keys(info.weights);
-  const allOn = parts.length > 0 && parts.every(p => info.weights[p.id] > 0);
   const tags = [];
   if (it.quantity && it.quantity !== 1) {
     const q = it.unit === "kg" || it.unit === "l" ? `${fmtNum(it.quantity, 3)} ${it.unit}` : `${fmtNum(it.quantity, 0)} un`;
@@ -366,8 +430,6 @@ function renderItem(r, it, info, parts) {
   if (info.discountShare > 0.004 && r.discounts.length) tags.push(`<span class="tag disc"><i class="fa-solid fa-ticket"></i>cupão −${fmtMoney(info.discountShare, cur)}</span>`);
   if (it.suggested) tags.push(`<span class="tag ai"><i class="fa-solid fa-wand-magic-sparkles"></i>sugestão da memória</span>`);
   const sameName = memoryKey(it.original) === memoryKey(it.translated);
-  const weightsEqual = new Set(Object.values(info.weights)).size <= 1;
-  const each = assigned.length > 1 && weightsEqual ? `<span class="tiny muted num each">${eur(info.eur / assigned.length)} cada</span>` : "";
 
   return `<div class="item ${assigned.length ? "" : "unassigned"} ${it.suggested ? "suggested" : ""}" data-r="${r.id}" data-i="${it.id}">
     <div class="item-main">
@@ -382,15 +444,7 @@ function renderItem(r, it, info, parts) {
         ${cur !== "EUR" ? `<span>${it.discount > 0 && r.lineDiscountMode !== "spread" ? `<s>${fmtMoney(it.basePrice, cur)}</s> ` : ""}${fmtMoney(info.effective, cur)}</span>` : it.discount > 0 && r.lineDiscountMode !== "spread" ? `<span><s>${eur(it.basePrice)}</s></span>` : ""}
       </div>
     </div>
-    <div class="item-people">
-      <button class="pill all mini ${allOn ? "on" : ""}" data-act="item-all">Todos</button>
-      ${parts.map(p => {
-        const w = info.weights[p.id];
-        return `<button class="pill mini ${w ? "on" : ""}" style="--c:${p.color}" data-act="item-person" data-p="${p.id}" aria-pressed="${!!w}">${avatar(p)}${esc(p.name)}${w && w !== 1 ? `<span class="w">×${fmtNum(w, w % 1 ? 1 : 0)}</span>` : ""}</button>`;
-      }).join("")}
-      <button class="icon-btn sm edit-only" data-act="item-edit" title="Editar artigo / partes diferentes" aria-label="Editar artigo"><i class="fa-solid fa-sliders"></i></button>
-      ${each}
-    </div>
+    ${peoplePills(it, info, parts, r)}
   </div>`;
 }
 
@@ -407,7 +461,14 @@ function renderPeople() {
     <form class="add-row edit-only" id="addPersonForm">
       <input class="input" id="newPerson" placeholder="Adicionar pessoa…" maxlength="24" autocomplete="off">
       <button class="icon-btn" type="submit" aria-label="Adicionar"><i class="fa-solid fa-plus"></i></button>
-    </form>`;
+    </form>
+    <div class="groups edit-only">
+      <div class="lbl">Grupos</div>
+      <div class="pills">
+        ${groups.map(g => `<button class="pill group" data-act="group-edit" data-g="${g.id}" title="${esc(g.members.map(nameOf).join(", "))}"><span class="stack">${g.members.slice(0, 4).map(id => avatar(person(id))).join("")}</span>${esc(g.name)}</button>`).join("")}
+        <button class="pill all" data-act="group-edit"><i class="fa-solid fa-plus"></i> Grupo</button>
+      </div>
+    </div>`;
 }
 
 function renderSummary() {
@@ -423,7 +484,7 @@ function renderSummary() {
       const net = S.net[p.id] || 0;
       const paid = S.paid[p.id] || 0;
       const open = ui.openOwe.has(p.id);
-      const status = Math.abs(net) < 0.005 ? `<span class="muted">quites</span>` : net > 0 ? `<span class="pos">recebe ${eur(net)}</span>` : `<span class="neg">deve ${eur(-net)}</span>`;
+      const status = isLocked() ? `<span class="muted"><i class="fa-solid fa-lock"></i> provisório</span>` : Math.abs(net) < 0.005 ? `<span class="muted">quites</span>` : net > 0 ? `<span class="pos">recebe ${eur(net)}</span>` : `<span class="neg">deve ${eur(-net)}</span>`;
       return `<div class="owe ${open ? "open" : ""}">
         <button class="owe-head" data-act="owe-toggle" data-p="${p.id}">
           ${avatar(p, "lg")}
@@ -435,11 +496,12 @@ function renderSummary() {
           <div style="display:flex;gap:6px;margin-top:10px">
             <button class="btn sm" data-act="copy-amount" data-v="${consumed}"><i class="fa-regular fa-copy"></i> ${plainAmount(consumed)}</button>
             <button class="btn sm" data-act="person-message" data-p="${p.id}"><i class="fa-regular fa-message"></i> Mensagem</button>
+            ${!isMe(p.id) ? `<button class="btn sm revolut-btn edit-only" data-act="revolut-request" data-p="${p.id}" ${isLocked() ? "disabled" : ""}><span class="rv">R</span> Pedir</button>` : ""}
           </div>
         </div>
       </div>`;
     }).join("")}
-    ${S.unassigned > 0.004 ? `<div class="note"><i class="fa-solid fa-circle-info"></i> Ainda há ${eur(S.unassigned)} por atribuir — por agora contam como de quem pagou.</div>` : ""}`;
+    ${isLocked() ? `<div class="note"><i class="fa-solid fa-lock"></i> Valores provisórios: ainda há ${eur(S.unassigned)} por atribuir.</div>` : ""}`;
 }
 
 function personBreakdownHtml(pid) {
@@ -471,6 +533,13 @@ function renderTransfers() {
   if (!split.receipts.length) { panel.classList.add("hidden"); return; }
   panel.classList.remove("hidden");
   const t = S.transfers;
+  if (isLocked()) {
+    const missing = split.receipts.reduce((n, r) => n + r.items.filter(it => !Object.keys(S.byReceipt[r.id].perItem[it.id].weights).length).length, 0);
+    panel.innerHTML = `<div class="panel-head"><h3><i class="fa-solid fa-right-left"></i>Acertos</h3><span class="sub">bloqueado</span></div>
+      <div class="locked"><i class="fa-solid fa-lock"></i><div><strong>Falta atribuir ${missing} ${missing === 1 ? "artigo" : "artigos"} (${eur(S.unassigned)})</strong><span>Os acertos e os pedidos de pagamento ficam disponíveis quando tudo estiver atribuído.</span></div></div>
+      <button class="btn sm block edit-only" data-act="goto-unassigned" style="margin-top:10px"><i class="fa-solid fa-magnifying-glass"></i> Ir para o primeiro por atribuir</button>`;
+    return;
+  }
   panel.innerHTML = `<div class="panel-head"><h3><i class="fa-solid fa-right-left"></i>Acertos</h3><span class="sub">${t.length ? `${t.length} ${t.length === 1 ? "transferência" : "transferências"}` : ""}</span></div>
     ${t.length ? t.map(x => {
       const from = person(x.from), to = person(x.to);
@@ -480,6 +549,7 @@ function renderTransfers() {
         ${avatar(from)}<i class="fa-solid fa-arrow-right arrow"></i>${avatar(to)}
         <div class="t-names"><strong>${esc(from.name)}</strong> paga a <strong>${esc(to.name)}</strong></div>
         <button class="t-amt" data-act="copy-amount" data-v="${x.amount}" title="Copiar valor">${eur(x.amount)}</button>
+        ${isMe(x.to) && !done ? `<button class="icon-btn sm revolut edit-only" data-act="revolut-request" data-p="${x.from}" title="Pedir no Revolut" aria-label="Pedir no Revolut">R</button>` : ""}
       </div>`;
     }).join("") : `<div class="empty-mini"><i class="fa-solid fa-champagne-glasses"></i> Ninguém deve nada a ninguém.</div>`}
     <div class="note">Escolhe quem pagou cada recibo; os acertos já compensam recibos pagos por pessoas diferentes.</div>`;
@@ -495,6 +565,7 @@ function renderShare() {
       <button class="btn" data-act="share-native"><i class="fa-brands fa-whatsapp"></i>Enviar</button>
       <button class="btn" data-act="share-link"><i class="fa-solid fa-link"></i>Link</button>
       <button class="btn" data-act="share-people"><i class="fa-regular fa-message"></i>Por pessoa</button>
+      <button class="btn wide revolut-btn" data-act="revolut-export"><span class="rv">R</span>Despesa de grupo no Revolut</button>
       <button class="btn ghost" data-act="export-csv"><i class="fa-solid fa-file-csv"></i>CSV</button>
       <button class="btn ghost" data-act="export-json"><i class="fa-solid fa-file-export"></i>Backup</button>
     </div>`;
@@ -511,11 +582,11 @@ function summaryText() {
   }
   lines.push("", `💶 Total: ${eur(S.total)}`);
   for (const p of participants()) lines.push(`${p.name}: ${eur(S.consumed[p.id] || 0)}`);
-  if (S.transfers.length) {
+  if (S.transfers.length && !isLocked()) {
     lines.push("", "↪️ Acertos:");
     for (const t of S.transfers) lines.push(`${nameOf(t.from)} → ${nameOf(t.to)}: ${eur(t.amount)}${split.settled?.[transferKey(t)] ? " ✅" : ""}`);
   }
-  if (S.unassigned > 0.004) lines.push("", `⚠️ ${eur(S.unassigned)} ainda por atribuir`);
+  if (isLocked()) lines.push("", `⚠️ Valores provisórios: ${eur(S.unassigned)} ainda por atribuir`);
   return lines.join("\n");
 }
 
@@ -533,13 +604,97 @@ function personText(pid) {
       lines.push(`• ${it.translated || it.original}${frac < 0.999 ? ` (${fractionLabel(info.weights[pid], info.sumW)})` : ""} — ${eur(info.people[pid])}`);
     }
   }
-  lines.push("", `A tua parte: ${eur(S.consumed[pid] || 0)}`);
+  lines.push("", `A tua parte: ${eur(S.consumed[pid] || 0)}${isLocked() ? " (provisório)" : ""}`);
+  if (isLocked()) return lines.join("\n");
   const owes = S.transfers.filter(t => t.from === pid);
   for (const t of owes) lines.push(`👉 Pagas ${eur(t.amount)} a ${nameOf(t.to)}`);
   const gets = S.transfers.filter(t => t.to === pid);
   for (const t of gets) lines.push(`👈 Recebes ${eur(t.amount)} de ${nameOf(t.from)}`);
-  if (owes.length && settings.revolutUser && owes.some(t => isMe(t.to))) lines.push(`Revolut: https://revolut.me/${settings.revolutUser.replace(/^@/, "")}`);
+  if (owes.length && settings.revolutUser && owes.some(t => isMe(t.to))) lines.push(`Revolut: ${revolutLink()}`);
   return lines.join("\n");
+}
+
+const revolutLink = () => `https://revolut.me/${String(settings.revolutUser || "").trim().replace(/^@/, "").replace(/^https?:\/\/revolut\.me\//, "")}`;
+
+/** Quanto esta pessoa me deve: transferência para mim, ou (sem acertos) a parte dela. */
+function amountOwedToMe(pid) {
+  const t = S.transfers.find(x => x.from === pid && isMe(x.to));
+  return t ? t.amount : 0;
+}
+
+function revolutRequestText(pid) {
+  const amount = amountOwedToMe(pid);
+  const stores = [...new Set(split.receipts.map(r => r.store))].join(", ");
+  return `Olá ${nameOf(pid)}! 🧾 ${split.name}${stores ? ` (${stores})` : ""}\nA tua parte: ${eur(S.consumed[pid] || 0)}\nDeves-me ${eur(amount)}.\n\nPaga pelo Revolut: ${revolutLink()}\nValor: ${plainAmount(amount)} €`;
+}
+
+async function revolutRequest(pid) {
+  if (isLocked()) return toast("Atribui primeiro todos os artigos.", "warn");
+  if (!settings.revolutUser) return revolutUserModal(() => revolutRequest(pid));
+  const amount = amountOwedToMe(pid);
+  if (amount <= 0) return toast(`${nameOf(pid)} não te deve nada nesta divisão.`, "warn");
+  const text = revolutRequestText(pid);
+  await copy(plainAmount(amount), `${plainAmount(amount)} € copiado`);
+  if (navigator.share) {
+    try { await navigator.share({ text }); return; } catch { /* cancelado */ }
+  }
+  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener");
+}
+
+function revolutUserModal(then) {
+  openModal({
+    title: "O teu utilizador Revolut",
+    sub: "Encontras em Revolut → perfil → @utilizador. Fica guardado neste dispositivo.",
+    body: `<div class="field"><input class="input" id="ruUser" placeholder="@utilizador" value="${esc(settings.revolutUser)}"></div>`,
+    foot: `<button class="btn ghost" data-close>Cancelar</button><button class="btn primary" id="ruOk">Guardar</button>`,
+    onMount: m => {
+      m.querySelector("#ruOk").onclick = () => {
+        settings.revolutUser = m.querySelector("#ruUser").value.trim();
+        closeModal();
+        persist();
+        if (settings.revolutUser) then?.();
+      };
+    },
+  });
+}
+
+function revolutExportModal() {
+  let mode = split.receipts.length > 1 ? "each" : "one";
+  openModal({
+    title: "Despesa de grupo no Revolut",
+    sub: "O Revolut não permite importar ficheiros — mas aqui tens os valores prontos a copiar, um a um.",
+    wide: true,
+    body: `${isLocked() ? `<div class="locked" style="margin-bottom:12px"><i class="fa-solid fa-lock"></i><div><strong>Ainda há ${eur(S.unassigned)} por atribuir</strong><span>Os valores abaixo vão mudar.</span></div></div>` : ""}
+      <div class="seg" id="rvMode" style="margin-bottom:12px"><button type="button" data-v="each">Uma despesa por recibo</button><button type="button" data-v="one">Tudo numa despesa</button></div>
+      <div id="rvList"></div>
+      <ol class="how small" style="margin-top:12px"><li>No Revolut abre o <b>grupo</b> → <b>Adicionar despesa</b>.</li><li>Escreve a descrição e o <b>total</b>, escolhe <b>quem pagou</b>.</li><li>Em dividir, escolhe <b>por valores</b> e cola o valor de cada pessoa (toca para copiar).</li></ol>`,
+    onMount: m => {
+      const q = sel => m.querySelector(sel);
+      const card = (title, total, payerId, perPerson) => `<div class="rv-card">
+        <div class="rv-head"><div><strong>${esc(title)}</strong><span>pagou ${esc(nameOf(payerId))}</span></div>
+          <button class="btn sm" data-copy="${esc(title)}" title="Copiar descrição"><i class="fa-regular fa-copy"></i> Descrição</button>
+          <button class="t-amt" data-copy="${plainAmount(total)}">${eur(total)}</button></div>
+        ${participants().filter(p => (perPerson[p.id] || 0) > 0.004).map(p => `<div class="rv-row">${avatar(p)}<span class="grow">${esc(p.name)}</span><button class="btn sm" data-copy="${plainAmount(perPerson[p.id])}"><i class="fa-regular fa-copy"></i> ${plainAmount(perPerson[p.id])} €</button></div>`).join("")}
+      </div>`;
+      const draw = () => {
+        q("#rvMode").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.v === mode));
+        if (mode === "each") {
+          q("#rvList").innerHTML = split.receipts.map(r => {
+            const b = S.byReceipt[r.id];
+            return card(`${r.store}${r.date ? ` ${shortDate(r.date)}` : ""}`, b.eurTotal, r.payerId, b.perPerson);
+          }).join("");
+        } else {
+          const payers = [...new Set(split.receipts.map(r => r.payerId))];
+          q("#rvList").innerHTML = payers.length > 1
+            ? `<div class="note">Os recibos foram pagos por pessoas diferentes: usa "Uma despesa por recibo".</div>`
+            : card(split.name, S.total - S.unassigned, payers[0], S.consumed);
+        }
+      };
+      q("#rvMode").onclick = e => { const b = e.target.closest("[data-v]"); if (b) { mode = b.dataset.v; draw(); } };
+      q("#rvList").onclick = e => { const b = e.target.closest("[data-copy]"); if (b) copy(b.dataset.copy, `Copiado: ${b.dataset.copy}`); };
+      draw();
+    },
+  });
 }
 
 function csvExport() {
@@ -748,13 +903,31 @@ const actions = {
     setShares(it, allOn ? {} : Object.fromEntries(split.participants.map(p => [p, 1])));
     commit();
   },
+  "item-group"(el) {
+    const { r, i } = el.closest(".item").dataset;
+    const g = activeGroups().find(x => x.id === el.dataset.g);
+    if (!g) return;
+    setShares(findItem(r, i), Object.fromEntries(g.members.map(p => [p, 1])));
+    commit();
+  },
   "item-edit"(el) {
     const { r, i } = el.closest(".item").dataset;
     itemModal(r, i);
   },
   "item-add"(el) { itemModal(el.dataset.r, null); },
-  "r-collapse"(el) { const r = findR(el.dataset.r); r.collapsed = !r.collapsed; commit(); },
-  "r-edit"(el) { receiptModal(el.dataset.r); },
+  "r-collapse"(el) {
+    if (ui.readonly) {
+      const id = el.dataset.r;
+      ui.expanded.has(id) ? ui.expanded.delete(id) : ui.expanded.add(id);
+      return render();
+    }
+    const r = findR(el.dataset.r);
+    r.collapsed = !r.collapsed;
+    commit();
+  },
+  "r-edit"(el) { findR(el.dataset.r)?.kind === "expense" ? expenseModal(el.dataset.r) : receiptModal(el.dataset.r); },
+  "expense-add"() { expenseModal(null); },
+  "group-edit"(el) { groupModal(el.dataset.g || null); },
   "r-discounts"(el) { discountsModal(el.dataset.r); },
   "r-image"(el) { imageModal(el.dataset.r); },
   async "r-delete"(el) {
@@ -815,6 +988,15 @@ const actions = {
   },
   "copy-amount"(el) { copy(plainAmount(Number(el.dataset.v)), `${plainAmount(Number(el.dataset.v))} € copiado`); },
   "person-message"(el) { personMessageModal(el.dataset.p); },
+  "revolut-request"(el) { revolutRequest(el.dataset.p); },
+  "revolut-export"() { revolutExportModal(); },
+  "goto-unassigned"() {
+    const el = document.querySelector(".receipt:not(.collapsed) .item.unassigned") || document.querySelector(".item.unassigned");
+    if (!el) return;
+    el.closest(".receipt")?.classList.remove("collapsed");
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.animate([{ background: "var(--warn-soft)" }, { background: "transparent" }], { duration: 1600 });
+  },
   "transfer-done"(el) {
     split.settled ||= {};
     const k = el.dataset.k;
@@ -844,6 +1026,11 @@ const actions = {
     renderBrushBar();
   },
   "brush-off"() { toggleBrush(false); },
+  "brush-group"(el) {
+    const g = activeGroups().find(x => x.id === el.dataset.g);
+    if (g) ui.brush = [...g.members];
+    renderBrushBar();
+  },
 };
 
 const slug = s => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\w]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "divisao";
@@ -911,7 +1098,8 @@ function importOptionsModal() {
       <label class="option" for="cameraInput"><i class="fa-solid fa-camera"></i><strong>Fotografar</strong><span>Abre a câmara do telemóvel.</span></label>
       <label class="option" for="fileInput"><i class="fa-solid fa-images"></i><strong>Fotos ou PDFs</strong><span>Escolhe vários: cada ficheiro é um recibo diferente.</span></label>
       <label class="option" for="multiPartInput"><i class="fa-solid fa-scroll"></i><strong>Recibo longo</strong><span>Várias fotos que são partes do <b>mesmo</b> recibo (ex.: Tesco comprido).</span></label>
-      <button class="option" id="manualOpt"><i class="fa-solid fa-keyboard"></i><strong>Introduzir à mão</strong><span>Cria um recibo vazio e adiciona artigos.</span></button>
+      <button class="option" id="expenseOpt"><i class="fa-solid fa-car-side"></i><strong>Despesa sem recibo</strong><span>Uber, renda, jantar, bilhetes… escreves o que quiseres.</span></button>
+      <button class="option" id="manualOpt"><i class="fa-solid fa-keyboard"></i><strong>Recibo à mão</strong><span>Cria um recibo vazio e adiciona artigos um a um.</span></button>
       <button class="option" id="jsonOpt"><i class="fa-solid fa-code"></i><strong>Importar JSON / backup</strong><span>Recupera uma divisão exportada ou cola dados.</span></button>
     </div>
     <input type="file" id="multiPartInput" accept="image/*" multiple class="hidden">`,
@@ -920,6 +1108,7 @@ function importOptionsModal() {
       m.querySelector("label[for=cameraInput]").addEventListener("click", () => setTimeout(closeModal, 300));
       m.querySelector("label[for=fileInput]").addEventListener("click", () => setTimeout(closeModal, 300));
       m.querySelector("#manualOpt").onclick = () => manualReceiptModal();
+      m.querySelector("#expenseOpt").onclick = () => expenseModal(null);
       m.querySelector("#jsonOpt").onclick = () => jsonImportModal();
     },
   });
@@ -1034,29 +1223,10 @@ function itemModal(rid, iid) {
         q("#fFinal").innerHTML = `Valor final: <strong>${fmtMoney(f, cur)}</strong>${cur !== "EUR" ? ` ≈ <strong>${eur(f * rate)}</strong>` : ""} <span class="muted">(antes de cupões gerais)</span>`;
         drawWeights();
       };
-      const drawWeights = () => {
-        const f = final();
-        const rate = r.eurCharged > 0 ? receiptBreakdown(r, split.participants).factor : r.rate || 1;
-        const sumW = participants().reduce((s, p) => s + (weights[p.id] || 0), 0);
-        q("#fWeights").innerHTML = participants().map(p => `<div class="weight-row">${avatar(p)}<span class="name">${esc(p.name)}</span>
-          <span class="val">${weights[p.id] && sumW ? eur((f * rate * weights[p.id]) / sumW) : "—"}</span>
-          <div class="stepper"><button type="button" data-w="-1" data-p="${p.id}">−</button><input data-wi="${p.id}" inputmode="decimal" value="${weights[p.id] ? fmtNum(weights[p.id], weights[p.id] % 1 ? 1 : 0) : 0}"><button type="button" data-w="1" data-p="${p.id}">+</button></div></div>`).join("");
-      };
-      q("#fWeights").addEventListener("click", e => {
-        const b = e.target.closest("[data-w]");
-        if (!b) return;
-        const v = Math.max(0, (weights[b.dataset.p] || 0) + Number(b.dataset.w));
-        if (v) weights[b.dataset.p] = v; else delete weights[b.dataset.p];
-        drawWeights();
-      });
-      q("#fWeights").addEventListener("change", e => {
-        const i = e.target.closest("[data-wi]");
-        if (!i) return;
-        const v = Math.max(0, parseAmount(i.value) || 0);
-        if (v) weights[i.dataset.wi] = v; else delete weights[i.dataset.wi];
-        drawWeights();
-      });
+      let drawWeights = () => {};
       ["#fBase", "#fDisc"].forEach(s => q(s).addEventListener("input", drawFinal));
+      const rateNow = () => (r.eurCharged > 0 ? receiptBreakdown(r, split.participants).factor : r.rate || 1);
+      drawWeights = weightsEditor(q("#fWeights"), weights, () => final() * rateNow());
       drawFinal();
 
       const collect = () => {
@@ -1097,6 +1267,151 @@ function itemModal(rid, iid) {
         }));
         closeModal();
         withUndo(`Separado em ${n} unidades.`, () => { r.items.splice(idx, 1, ...units); });
+      });
+    },
+  });
+}
+
+function weightsEditor(container, weights, totalFn, fmt = eur) {
+  const draw = () => {
+    const total = totalFn();
+    const sumW = participants().reduce((a, p) => a + (weights[p.id] || 0), 0);
+    container.innerHTML = `<div class="pills" style="margin-bottom:6px">
+        <button type="button" class="pill all mini" data-set="all">Todos</button>
+        ${activeGroups().map(g => `<button type="button" class="pill group mini" data-set="${g.id}"><i class="fa-solid fa-user-group"></i>${esc(g.name)}</button>`).join("")}
+      </div>` + participants().map(p => `<div class="weight-row">${avatar(p)}<span class="name">${esc(p.name)}</span>
+        <span class="val">${weights[p.id] && sumW ? fmt((total * weights[p.id]) / sumW) : "—"}</span>
+        <div class="stepper"><button type="button" data-w="-1" data-p="${p.id}">−</button><input data-wi="${p.id}" inputmode="decimal" value="${weights[p.id] ? fmtNum(weights[p.id], weights[p.id] % 1 ? 1 : 0) : 0}"><button type="button" data-w="1" data-p="${p.id}">+</button></div></div>`).join("");
+  };
+  const setAll = ids => { Object.keys(weights).forEach(k => delete weights[k]); ids.forEach(id => { weights[id] = 1; }); };
+  container.addEventListener("click", e => {
+    const set = e.target.closest("[data-set]");
+    if (set) {
+      setAll(set.dataset.set === "all" ? split.participants : activeGroups().find(g => g.id === set.dataset.set)?.members || []);
+      return draw();
+    }
+    const b = e.target.closest("[data-w]");
+    if (!b) return;
+    const v = Math.max(0, (weights[b.dataset.p] || 0) + Number(b.dataset.w));
+    if (v) weights[b.dataset.p] = v; else delete weights[b.dataset.p];
+    draw();
+  });
+  container.addEventListener("change", e => {
+    const i = e.target.closest("[data-wi]");
+    if (!i) return;
+    const v = Math.max(0, parseAmount(i.value) || 0);
+    if (v) weights[i.dataset.wi] = v; else delete weights[i.dataset.wi];
+    draw();
+  });
+  draw();
+  return draw;
+}
+
+const EXPENSE_IDEAS = [["🚕", "Uber"], ["🏠", "Renda"], ["🍽️", "Jantar"], ["🍺", "Bar"], ["🚆", "Comboio"], ["🎟️", "Bilhetes"], ["⚡", "Luz/água"], ["🛒", "Compras"]];
+
+function expenseModal(rid) {
+  const r = rid ? findR(rid) : null;
+  const it = r?.items[0];
+  const last = [...split.receipts].reverse().find(x => x.kind === "expense");
+  const weights = it ? { ...it.shares } : Object.fromEntries(split.participants.map(p => [p, 1]));
+  let emoji = it?.emoji || "💸";
+  openModal({
+    title: r ? "Editar despesa" : "Despesa sem recibo",
+    sub: "Campo aberto: escreve o que quiseres.",
+    body: `
+      <div class="pills" id="xIdeas" style="margin-bottom:12px">${EXPENSE_IDEAS.map(([e, n]) => `<button type="button" class="pill all mini" data-e="${e}" data-n="${n}">${e} ${n}</button>`).join("")}</div>
+      <div class="grid2" style="grid-template-columns:64px 1fr">
+        <div class="field"><label>Ícone</label><input class="input" id="xEmoji" value="${esc(emoji)}" maxlength="4" style="text-align:center;font-size:18px"></div>
+        <div class="field"><label>Descrição</label><input class="input" id="xDesc" value="${esc(r?.store || "")}" placeholder="Ex.: Uber aeroporto → casa" maxlength="80"></div>
+      </div>
+      <div class="grid3">
+        <div class="field"><label>Valor</label><input class="input num" id="xAmount" inputmode="decimal" value="${it ? fmtNum(it.price) : ""}" placeholder="0,00"></div>
+        <div class="field"><label>Moeda</label><select class="select input" id="xCur">${currencyOptions(r?.currency || last?.currency || "EUR")}</select></div>
+        <div class="field"><label>Data</label><input class="input" type="date" id="xDate" value="${esc(r?.date || new Date().toISOString().slice(0, 10))}"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Quem pagou</label><select class="select input" id="xPayer">${participants().map(p => `<option value="${p.id}" ${p.id === (r?.payerId || (split.participants.includes(settings.meId) ? settings.meId : split.participants[0])) ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></div>
+        <div class="field"><label>Notas (opcional)</label><input class="input" id="xNote" value="${esc(r?.location || "")}" placeholder="Ex.: Bolt, 23h"></div>
+      </div>
+      <div class="field"><span class="lbl">Dividir por <span class="hint">— usa + para quem conta a dobrar</span></span><div id="xWeights"></div></div>`,
+    foot: `<button class="btn ghost" data-close>Cancelar</button><button class="btn primary" id="xSave">${r ? "Guardar" : "Adicionar"}</button>`,
+    onMount: m => {
+      const q = sel => m.querySelector(sel);
+      const redraw = weightsEditor(q("#xWeights"), weights, () => parseAmount(q("#xAmount").value) || 0, v => fmtMoney(v, q("#xCur").value));
+      q("#xAmount").addEventListener("input", redraw);
+      q("#xCur").addEventListener("change", redraw);
+      q("#xIdeas").onclick = e => {
+        const b = e.target.closest("[data-e]");
+        if (!b) return;
+        q("#xEmoji").value = b.dataset.e;
+        if (!q("#xDesc").value.trim()) q("#xDesc").value = b.dataset.n;
+        q("#xDesc").focus();
+      };
+      q("#xSave").onclick = async () => {
+        const desc = q("#xDesc").value.trim();
+        const amount = parseAmount(q("#xAmount").value);
+        if (!desc) return toast("Escreve uma descrição.", "warn");
+        if (!amount) return toast("Indica o valor.", "warn");
+        if (!Object.keys(weights).length) return toast("Escolhe pelo menos uma pessoa.", "warn");
+        emoji = q("#xEmoji").value.trim() || "💸";
+        const cur = q("#xCur").value;
+        const date = q("#xDate").value;
+        const target = r || normalizeReceipt({ store: desc, currency: cur, items: [] }, uid);
+        const needsRate = !r || r.currency !== cur || r.date !== date;
+        Object.assign(target, {
+          kind: "expense", store: desc, location: q("#xNote").value.trim(), currency: cur, date,
+          printedTotal: null, payerId: q("#xPayer").value,
+          items: [{ id: it?.id || uid(), original: desc, translated: desc, category: "outros", emoji, quantity: 1, unit: "un", unitPrice: null, basePrice: round2(amount), discount: 0, discountLabel: "", price: round2(amount), shares: { ...weights } }],
+          discounts: [], lineDiscountMode: "item",
+        });
+        closeModal();
+        if (needsRate) { target.eurCharged = null; await applyRate(target); }
+        if (!r) {
+          split.receipts.push(target);
+          split.receipts.sort((a, b) => `${a.date || "9"}${a.time || ""}`.localeCompare(`${b.date || "9"}${b.time || ""}`));
+          toast(`${desc} adicionad${/a$/i.test(desc) ? "a" : "o"}.`);
+        }
+        commit();
+      };
+    },
+  });
+}
+
+function groupModal(gid) {
+  const g = gid ? groups.find(x => x.id === gid) : null;
+  const members = new Set(g?.members || []);
+  openModal({
+    title: g ? "Editar grupo" : "Novo grupo",
+    sub: "Atalhos para dividir com sempre as mesmas pessoas (ex.: “Casa”, “Eu e a Filipa”).",
+    body: `<div class="field"><label>Nome</label><input class="input" id="gName" value="${esc(g?.name || "")}" placeholder="Ex.: Casa" maxlength="24"></div>
+      <div class="field"><span class="lbl">Pessoas</span><div class="pills" id="gMembers">${people.map(p => `<button type="button" class="pill ${members.has(p.id) ? "on" : ""}" style="--c:${p.color}" data-p="${p.id}">${avatar(p)}${esc(p.name)}</button>`).join("")}</div></div>
+      ${g ? `<button type="button" class="btn sm" id="gUse"><i class="fa-solid fa-plus"></i> Nova divisão só com este grupo</button>` : ""}`,
+    foot: `${g ? `<button class="btn danger left" id="gDel"><i class="fa-regular fa-trash-can"></i></button>` : ""}<button class="btn ghost" data-close>Cancelar</button><button class="btn primary" id="gSave">Guardar</button>`,
+    onMount: m => {
+      const q = sel => m.querySelector(sel);
+      q("#gMembers").onclick = e => {
+        const b = e.target.closest("[data-p]");
+        if (!b) return;
+        members.has(b.dataset.p) ? members.delete(b.dataset.p) : members.add(b.dataset.p);
+        b.classList.toggle("on", members.has(b.dataset.p));
+      };
+      q("#gSave").onclick = () => {
+        const name = q("#gName").value.trim();
+        if (!name) return toast("Dá um nome ao grupo.", "warn");
+        if (members.size < 1) return toast("Escolhe pelo menos uma pessoa.", "warn");
+        const ordered = people.map(p => p.id).filter(id => members.has(id));
+        if (g) Object.assign(g, { name, members: ordered });
+        else groups.push({ id: "g_" + uid(), name, members: ordered });
+        closeModal();
+        commit();
+      };
+      q("#gDel") && (q("#gDel").onclick = () => { groups = groups.filter(x => x !== g); closeModal(); commit(); });
+      q("#gUse") && (q("#gUse").onclick = () => {
+        persist();
+        split = newSplit(`${g.name} ${new Date().toLocaleDateString("pt-PT", { day: "2-digit", month: "2-digit" })}`);
+        split.participants = people.map(p => p.id).filter(id => g.members.includes(id));
+        closeModal();
+        commit();
       });
     },
   });

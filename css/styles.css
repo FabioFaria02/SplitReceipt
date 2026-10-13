@@ -432,3 +432,35 @@ textarea.input { height: auto; min-height: 140px; padding: 10px 12px; resize: ve
 }
 .item-open { cursor: pointer; }
 .item-open:hover .item-name { text-decoration: underline; text-decoration-color: var(--faint); text-underline-offset: 3px; }
+
+/* ---------- v2: grupos, despesas, Revolut, bloqueio ---------- */
+.pill.group { --c: var(--accent-2); padding: 0 11px; gap: 6px; }
+.pill.group i { font-size: 10px; }
+.pill.group.on { color: var(--text); border-color: color-mix(in srgb, var(--c) 60%, transparent); background: color-mix(in srgb, var(--c) 18%, transparent); }
+.pill.group .stack { display: inline-flex; margin-left: -6px; }
+.pill.group .stack .av { width: 20px; height: 20px; font-size: 8px; opacity: 1; margin-left: -6px; border: 1.5px solid var(--bg); }
+.pill.group .stack .av:first-child { margin-left: 0; }
+.groups { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.groups .lbl { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+.r-logo.exp { background: var(--glass-strong); border: 1px solid var(--stroke); font-size: 22px; }
+.receipt.expense .exp-item { border-top: 1px solid var(--line); padding: 10px 16px 12px; }
+.receipt.expense .exp-item .item-people { margin: 0; }
+.receipt.expense .meta .tag { padding: 1px 7px; }
+.locked { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border-radius: 14px; background: var(--warn-soft); color: var(--warn); }
+.locked i { margin-top: 2px; }
+.locked strong { display: block; font-size: 13px; }
+.locked span { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.45; }
+.rv { width: 18px; height: 18px; border-radius: 5px; display: inline-grid; place-items: center; background: #191c1f; color: #fff; font: 800 11px "Manrope", sans-serif; }
+:root[data-theme="dark"] .rv { background: #fff; color: #191c1f; }
+.icon-btn.revolut { font: 800 13px "Manrope", sans-serif; color: var(--text); }
+.rv-card { padding: 12px; border-radius: 16px; background: var(--glass-soft); border: 1px solid var(--stroke-soft); margin-bottom: 10px; }
+.rv-head { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 1px dashed var(--line); margin-bottom: 4px; }
+.rv-head > div { flex: 1; min-width: 0; }
+.rv-head strong { display: block; }
+.rv-head span { font-size: 12px; color: var(--muted); }
+.rv-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.rv-row .grow { flex: 1; font-weight: 600; }
+@media (max-width: 880px) {
+  .readonly .sidebar { order: -1; }
+  .readonly .layout { display: flex; flex-direction: column; }
+}
