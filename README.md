@@ -11,14 +11,21 @@ Divide recibos entre amigos sem fazer contas. Tiras uma foto (ou carregas uma im
   - descontos de artigo (por exemplo, Lidl "SLEVA 60%") ficam no próprio artigo, ou podem ser espalhados por todos;
   - cupões gerais (por exemplo, Tesco Clubcard) são repartidos proporcionalmente, por todos os artigos ou só pelos que escolheres.
 - **Verificação do total**: compara a soma dos artigos com o total impresso e permite corrigir a diferença com um clique.
-- **Atribuição rápida**: botões por pessoa, "Todos", **pincel** para atribuir muitos artigos seguidos, e **partes diferentes** por pessoa (por exemplo, 2 croissants para um e 1 para outro), ou separar um artigo em unidades.
+- **Atribuição rápida**: botões por pessoa, "Todos", **pincel** para atribuir muitos artigos seguidos, e **partes diferentes** por pessoa.
+- **Por unidade**: em artigos com várias unidades (por exemplo, 3 croissants), escolhes quantas leva cada pessoa (1 para mim e 2 para a Inês), incluindo meias unidades.
 - **Memória**: da próxima vez que comprares o mesmo artigo, a app sugere as mesmas pessoas.
 - **Despesas sem recibo** (Uber, renda, jantar…): campo aberto com descrição, valor, moeda, quem pagou e por quem se divide.
 - **Grupos** (por exemplo, "Casa" ou "Eu e a Filipa"): atalhos em cada artigo, no pincel e nas despesas, e servem também para criar uma divisão só com esse grupo.
 - **Quem pagou** é definido por recibo, e os **acertos** compensam recibos pagos por pessoas diferentes com o mínimo de transferências. Os acertos ficam **bloqueados até todos os artigos estarem atribuídos**.
 - **Revolut**: botão "Pedir" por pessoa, que copia o valor e partilha uma mensagem com o teu link revolut.me. Há também um ecrã com os valores por pessoa prontos a copiar para uma despesa de grupo (o Revolut não aceita importar ficheiros).
 - **Partilha**: resumo para o WhatsApp, mensagem por pessoa (com a lista do que levou), **link só de leitura** (os dados vão dentro do link), CSV e backup em JSON.
-- **Histórico** de divisões, opção de anular, tema claro e escuro em vidro, instalável como app (PWA) e funciona offline para consultar.
+- **Histórico** de divisões, opção de anular, tema claro e escuro em vidro.
+- **App instalável (PWA)**: ícone no ecrã principal, ecrã inteiro, funciona offline para consultar e avisa quando há uma versão nova. Tem atalhos no ícone (Novo recibo, Despesa, Histórico). No Android podes **partilhar fotos de recibos da galeria diretamente para a app**.
+
+### Instalar no telemóvel
+
+- **Android (Chrome)**: botão 📱 no topo, ou menu ⋮ → "Instalar app".
+- **iPhone (Safari)**: Partilhar → "Adicionar ao ecrã principal".
 
 ## Deploy no Netlify
 

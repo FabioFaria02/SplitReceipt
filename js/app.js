@@ -121,6 +121,17 @@ function activeGroups() {
     .map(g => ({ ...g, members: g.members.filter(m => set.has(m)) }))
     .filter(g => g.members.length && g.members.length < set.size);
 }
+/** Nº de unidades se o artigo puder ser dividido por unidades (ex.: 3 croissants). */
+function unitCount(it) {
+  const q = Number(it?.quantity);
+  return it && it.unit !== "kg" && it.unit !== "l" && Number.isInteger(q) && q >= 2 && q <= 99 ? q : 0;
+}
+/** Os pesos do artigo correspondem exatamente às unidades compradas? */
+function isUnitSplit(it, weights) {
+  const n = unitCount(it);
+  const sum = Object.values(weights).reduce((a, b) => a + b, 0);
+  return n > 0 && Math.abs(sum - n) < 1e-6;
+}
 const sameSet = (a, b) => a.length === b.length && a.every(x => b.includes(x));
 const isLocked = () => S && S.unassigned > 0.004;
 
@@ -406,12 +417,16 @@ function peoplePills(it, info, parts, r) {
   const allOn = parts.length > 0 && parts.every(p => info.weights[p.id] > 0);
   const weightsEqual = new Set(Object.values(info.weights)).size <= 1;
   const each = assigned.length > 1 && weightsEqual ? `<span class="tiny muted num each">${eur(info.eur / assigned.length)} cada</span>` : "";
+  const units = r.kind === "expense" ? 0 : unitCount(it);
+  const byUnits = units && isUnitSplit(it, info.weights) && !weightsEqual;
   return `<div class="item-people">
+      ${units ? `<button class="pill units mini ${byUnits ? "on" : ""} edit-only" data-act="item-units" title="Escolher quantas unidades leva cada pessoa"><i class="fa-solid fa-${byUnits ? "check" : "cubes-stacked"}"></i>${units} un${byUnits ? "" : " · por unidade"}</button>` : ""}
       <button class="pill all mini ${allOn ? "on" : ""}" data-act="item-all">Todos</button>
       ${activeGroups().map(g => `<button class="pill group mini ${weightsEqual && sameSet(assigned, g.members) ? "on" : ""}" data-act="item-group" data-g="${g.id}" title="${esc(g.members.map(nameOf).join(", "))}"><i class="fa-solid fa-user-group"></i>${esc(g.name)}</button>`).join("")}
       ${parts.map(p => {
         const w = info.weights[p.id];
-        return `<button class="pill mini ${w ? "on" : ""}" style="--c:${p.color}" data-act="item-person" data-p="${p.id}" aria-pressed="${!!w}">${avatar(p)}${esc(p.name)}${w && w !== 1 ? `<span class="w">×${fmtNum(w, w % 1 ? 1 : 0)}</span>` : ""}</button>`;
+        const badge = w && (byUnits ? `${fmtNum(w, w % 1 ? 2 : 0)} un` : w !== 1 ? `×${fmtNum(w, w % 1 ? 1 : 0)}` : "");
+        return `<button class="pill mini ${w ? "on" : ""}" style="--c:${p.color}" data-act="item-person" data-p="${p.id}" aria-pressed="${!!w}">${avatar(p)}${esc(p.name)}${badge ? `<span class="w">${badge}</span>` : ""}</button>`;
       }).join("")}
       <button class="icon-btn sm edit-only" data-act="${r.kind === "expense" ? "r-edit" : "item-edit"}" data-r="${r.id}" title="Partes diferentes por pessoa" aria-label="Editar partes"><i class="fa-solid fa-sliders"></i></button>
       ${each}
@@ -903,6 +918,10 @@ const actions = {
     setShares(it, allOn ? {} : Object.fromEntries(split.participants.map(p => [p, 1])));
     commit();
   },
+  "item-units"(el) {
+    const { r, i } = el.closest(".item").dataset;
+    unitsModal(r, i);
+  },
   "item-group"(el) {
     const { r, i } = el.closest(".item").dataset;
     const g = activeGroups().find(x => x.id === el.dataset.g);
@@ -1212,7 +1231,7 @@ function itemModal(rid, iid) {
         <div id="fWeights"></div>
       </div>`,
     foot: `${!isNew ? `<button class="btn danger left" id="fDel"><i class="fa-regular fa-trash-can"></i></button>` : ""}
-      ${canSplitUnits ? `<button class="btn" id="fUnits" title="Cria uma linha por unidade"><i class="fa-solid fa-divide"></i> Separar ${it.quantity} unidades</button>` : ""}
+      ${canSplitUnits ? `<button class="btn" id="fUnitsPick" title="Escolher quantas unidades leva cada pessoa"><i class="fa-solid fa-cubes-stacked"></i> Por unidades</button><button class="btn ghost" id="fUnits" title="Cria uma linha por unidade"><i class="fa-solid fa-divide"></i> Separar</button>` : ""}
       <button class="btn ghost" data-close>Cancelar</button><button class="btn primary" id="fSave">Guardar</button>`,
     onMount: m => {
       const q = s => m.querySelector(s);
@@ -1253,6 +1272,7 @@ function itemModal(rid, iid) {
         closeModal();
         withUndo("Artigo apagado.", () => { r.items = r.items.filter(x => x.id !== it.id); });
       });
+      q("#fUnitsPick") && (q("#fUnitsPick").onclick = () => unitsModal(rid, it.id));
       q("#fUnits") && (q("#fUnits").onclick = () => {
         collect();
         const n = it.quantity;
@@ -1268,6 +1288,90 @@ function itemModal(rid, iid) {
         closeModal();
         withUndo(`Separado em ${n} unidades.`, () => { r.items.splice(idx, 1, ...units); });
       });
+    },
+  });
+}
+
+function unitsModal(rid, iid) {
+  const r = findR(rid);
+  const it = findItem(rid, iid);
+  const n = unitCount(it);
+  const b = receiptBreakdown(r, split.participants);
+  const info = b.perItem[it.id];
+  const unitEur = info.eur / n;
+  const parts = participants();
+  // Começa pelas unidades atuais (se já estiver por unidades) ou vazio.
+  const units = {};
+  if (isUnitSplit(it, info.weights)) Object.assign(units, info.weights);
+  const name = it.translated || it.original;
+
+  openModal({
+    title: `${n} × ${esc(name)}`,
+    sub: `${eur(unitEur)} por unidade${r.currency !== "EUR" ? ` (${fmtMoney(info.effective / n, r.currency)})` : ""} · escolhe quantas leva cada um`,
+    body: `<div class="unit-strip" id="uStrip"></div><div id="uRows"></div>
+      <div class="pills" style="margin-top:12px">
+        <button type="button" class="btn sm" id="uEach"><i class="fa-solid fa-equals"></i> Igual por todos</button>
+        <button type="button" class="btn sm" id="uRest"><i class="fa-solid fa-user-plus"></i> Restantes por todos</button>
+        <button type="button" class="btn sm ghost" id="uClear"><i class="fa-solid fa-eraser"></i> Limpar</button>
+      </div>
+      <div class="note">Podes usar meias unidades (ex.: 0,5) se uma unidade for partilhada.</div>`,
+    foot: `<span class="u-status left" id="uStatus"></span><button class="btn ghost" data-close>Cancelar</button><button class="btn primary" id="uSave">Guardar</button>`,
+    onMount: m => {
+      const q = sel => m.querySelector(sel);
+      const sum = () => Object.values(units).reduce((a, v) => a + v, 0);
+      const set = (pid, v) => { v = Math.max(0, Math.round(v * 100) / 100); if (v) units[pid] = v; else delete units[pid]; };
+      const draw = () => {
+        const total = sum();
+        const left = Math.round((n - total) * 100) / 100;
+        // tira de unidades coloridas pela ordem das pessoas
+        const chips = [];
+        for (const p of parts) {
+          let v = units[p.id] || 0;
+          while (v > 0.001 && chips.length < Math.ceil(n)) { chips.push(`<span class="unit" style="--c:${p.color};--f:${Math.min(1, v)}" title="${esc(p.name)}">${esc(initials(p.name))}</span>`); v -= 1; }
+        }
+        while (chips.length < n) chips.push(`<span class="unit free">${esc(itemEmoji(it))}</span>`);
+        q("#uStrip").innerHTML = chips.join("");
+        q("#uRows").innerHTML = parts.map(p => {
+          const v = units[p.id] || 0;
+          return `<div class="weight-row">${avatar(p)}<span class="name">${esc(p.name)}</span>
+            <span class="val">${v ? `${fmtNum(v, v % 1 ? 2 : 0)} un · ${eur(unitEur * v)}` : "—"}</span>
+            <div class="stepper"><button type="button" data-d="-1" data-p="${p.id}" ${v <= 0 ? "disabled" : ""}>−</button><input data-u="${p.id}" inputmode="decimal" value="${fmtNum(v, v % 1 ? 2 : 0)}"><button type="button" data-d="1" data-p="${p.id}" ${left < 1 ? "disabled" : ""}>+</button></div></div>`;
+        }).join("");
+        const st = q("#uStatus");
+        if (Math.abs(left) < 0.005) st.innerHTML = `<span class="pos"><i class="fa-solid fa-check"></i> ${n} de ${n} atribuídas</span>`;
+        else if (left > 0) st.innerHTML = `<span class="warn-t">Faltam ${fmtNum(left, left % 1 ? 2 : 0)} de ${n}</span>`;
+        else st.innerHTML = `<span class="neg">${fmtNum(-left, -left % 1 ? 2 : 0)} a mais</span>`;
+        q("#uSave").disabled = Math.abs(left) >= 0.005;
+      };
+      q("#uRows").addEventListener("click", e => {
+        const btn = e.target.closest("[data-d]");
+        if (!btn) return;
+        set(btn.dataset.p, (units[btn.dataset.p] || 0) + Number(btn.dataset.d));
+        draw();
+      });
+      q("#uRows").addEventListener("change", e => {
+        const i = e.target.closest("[data-u]");
+        if (!i) return;
+        set(i.dataset.u, parseAmount(i.value) || 0);
+        draw();
+      });
+      q("#uEach").onclick = () => { Object.keys(units).forEach(k => delete units[k]); parts.forEach(p => set(p.id, n / parts.length)); draw(); };
+      q("#uRest").onclick = () => {
+        const left = n - sum();
+        if (left <= 0) return;
+        parts.forEach(p => set(p.id, (units[p.id] || 0) + left / parts.length));
+        // arredondamentos: acerta a diferença na primeira pessoa
+        const diff = Math.round((n - sum()) * 100) / 100;
+        if (diff) set(parts[0].id, (units[parts[0].id] || 0) + diff);
+        draw();
+      };
+      q("#uClear").onclick = () => { Object.keys(units).forEach(k => delete units[k]); draw(); };
+      q("#uSave").onclick = () => {
+        setShares(it, { ...units });
+        closeModal();
+        commit();
+      };
+      draw();
     },
   });
 }
@@ -1754,6 +1858,7 @@ function settingsModal() {
         <input class="input" id="sRev" style="width:160px" placeholder="@utilizador" value="${esc(settings.revolutUser)}"></div>
       <div class="setting"><div><strong>Chave Gemini pessoal</strong><span>Opcional. Só é usada se o servidor (Netlify) não tiver GEMINI_API_KEY. Fica guardada apenas neste dispositivo.</span></div>
         <input class="input" id="sKey" type="password" style="width:160px" placeholder="AIza…" value="${esc(settings.geminiKey)}" autocomplete="off"></div>
+      ${isStandalone() ? "" : `<div class="setting"><div><strong>Instalar no telemóvel</strong><span>Ícone no ecrã principal, ecrã inteiro e partilha de fotos da galeria para a app.</span></div><button class="btn sm" id="sInstall"><i class="fa-solid fa-mobile-screen-button"></i> Instalar</button></div>`}
       <div class="setting"><div><strong>Dados</strong><span>Backup de tudo (pessoas, divisões e memória).</span></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn sm" id="sExport">Exportar</button><label class="btn sm" for="sImport">Importar</label><input type="file" id="sImport" accept=".json" class="hidden"></div></div>
       <div class="setting"><div><strong>Esquecer memória</strong><span>Apaga as sugestões aprendidas.</span></div><button class="btn sm danger" id="sForget">Esquecer</button></div>`,
@@ -1769,6 +1874,7 @@ function settingsModal() {
       };
       q("#sAuto").onclick = e => { settings.autoAssign = !settings.autoAssign; e.currentTarget.classList.toggle("on", settings.autoAssign); };
       q("#sAll").onclick = e => { settings.newItemsAll = !settings.newItemsAll; e.currentTarget.classList.toggle("on", settings.newItemsAll); };
+      q("#sInstall") && (q("#sInstall").onclick = () => { closeModal(); installApp(); });
       q("#sForget").onclick = () => { memory = {}; persist(); toast("Memória apagada."); };
       q("#sExport").onclick = () => download(`splitreceipt-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ app: "splitreceipt-backup", v: 1, people, splits, memory, settings: { ...settings, geminiKey: "" } }, null, 2), "application/json");
       q("#sImport").onchange = async e => {
@@ -1871,6 +1977,110 @@ function leaveShared(keep) {
   else render();
 }
 
+/* =========================================================
+   App instalável (PWA)
+   ========================================================= */
+let installEvent = null;
+const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+function updateInstallButton() {
+  $("#installBtn").classList.toggle("hidden", isStandalone() || (!installEvent && !isIOS()));
+}
+
+async function installApp() {
+  if (installEvent) {
+    installEvent.prompt();
+    const { outcome } = await installEvent.userChoice.catch(() => ({}));
+    installEvent = null;
+    updateInstallButton();
+    if (outcome === "accepted") toast("SplitReceipt instalado no ecrã principal 🎉");
+    return;
+  }
+  openModal({
+    title: "Instalar no telemóvel",
+    sub: "Fica com ícone no ecrã principal, abre em ecrã inteiro e funciona offline.",
+    body: isIOS()
+      ? `<ol class="how">
+          <li>Abre este site no <b>Safari</b>.</li>
+          <li>Toca em <b>Partilhar</b> <i class="fa-solid fa-arrow-up-from-bracket"></i> na barra de baixo.</li>
+          <li>Escolhe <b>Adicionar ao ecrã principal</b> <i class="fa-regular fa-square-plus"></i> e confirma.</li>
+        </ol>`
+      : `<ol class="how">
+          <li>Abre este site no <b>Chrome</b> (Android).</li>
+          <li>Toca no menu <b>⋮</b> e escolhe <b>Instalar app</b> (ou "Adicionar ao ecrã principal").</li>
+          <li>Depois podes partilhar fotos de recibos da galeria diretamente para o SplitReceipt.</li>
+        </ol>`,
+  });
+}
+
+function setupPWA() {
+  window.addEventListener("beforeinstallprompt", e => {
+    e.preventDefault();
+    installEvent = e;
+    updateInstallButton();
+  });
+  window.addEventListener("appinstalled", () => { installEvent = null; updateInstallButton(); });
+  updateInstallButton();
+  $("#installBtn").onclick = installApp;
+  document.documentElement.classList.toggle("standalone", isStandalone());
+
+  if (!("serviceWorker" in navigator) || !(location.protocol === "https:" || location.hostname === "localhost")) return;
+  navigator.serviceWorker.register("sw.js").then(reg => {
+    const offerUpdate = worker => {
+      toast("Há uma nova versão do SplitReceipt.", "good", { label: "Atualizar", run: () => worker.postMessage("skipWaiting") });
+    };
+    if (reg.waiting && navigator.serviceWorker.controller) offerUpdate(reg.waiting);
+    reg.addEventListener("updatefound", () => {
+      const w = reg.installing;
+      w?.addEventListener("statechange", () => {
+        if (w.state === "installed" && navigator.serviceWorker.controller) offerUpdate(w);
+      });
+    });
+    // Procura atualizações quando a app volta ao primeiro plano.
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") reg.update().catch(() => {}); });
+  }).catch(() => {});
+  let reloading = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloading) return;
+    reloading = true;
+    location.reload();
+  });
+}
+
+/** Ficheiros partilhados a partir da galeria (share target) e atalhos do ícone. */
+async function handleLaunchParams() {
+  const params = new URLSearchParams(location.search);
+  const clean = () => history.replaceState(null, "", location.pathname + location.hash);
+  if (params.has("shared")) {
+    clean();
+    try {
+      const cache = await caches.open("splitreceipt-share");
+      const keys = await cache.keys();
+      const files = [];
+      for (const k of keys) {
+        const res = await cache.match(k);
+        const blob = await res.blob();
+        const name = decodeURIComponent(res.headers.get("X-File-Name") || "recibo");
+        files.push(new File([blob], name, { type: blob.type || res.headers.get("Content-Type") || "" }));
+        await cache.delete(k);
+      }
+      if (files.length) {
+        if (ui.readonly) leaveShared(false);
+        enqueue(files);
+      } else toast("Não recebi nenhuma imagem partilhada.", "warn");
+    } catch {
+      toast("Não foi possível abrir os ficheiros partilhados.", "error");
+    }
+    return;
+  }
+  const action = params.get("action");
+  if (action || params.has("source")) clean();
+  if (action === "add") importOptionsModal();
+  else if (action === "expense") expenseModal(null);
+  else if (action === "history") historyModal();
+}
+
 function bindGlobal() {
   $("#addBtn").onclick = importOptionsModal;
   $("#bbAdd").onclick = importOptionsModal;
@@ -1925,9 +2135,8 @@ async function init() {
   bindGlobal();
   await openSharedFromHash();
   render();
-  if ("serviceWorker" in navigator && location.protocol === "https:") {
-    navigator.serviceWorker.register("sw.js").catch(() => {});
-  }
+  setupPWA();
+  await handleLaunchParams();
   // Limpa imagens órfãs (recibos apagados) algum tempo depois, para permitir "Anular".
   setTimeout(() => { if (!ui.readonly) pruneImages(splits.flatMap(s => s.receipts.map(r => r.id))); }, 15000);
 }

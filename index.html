@@ -6,11 +6,13 @@
 <meta name="theme-color" content="#0c0f1d">
 <meta name="description" content="Divide recibos entre amigos: a IA lê o recibo, traduz para português, converte para euros e calcula quem deve quanto.">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="format-detection" content="telephone=no">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SplitReceipt">
 <title>SplitReceipt</title>
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -41,6 +43,7 @@
       </div>
     </div>
     <div class="top-actions">
+      <button class="icon-btn install-btn hidden" id="installBtn" title="Instalar app" aria-label="Instalar app"><i class="fa-solid fa-mobile-screen-button"></i></button>
       <button class="icon-btn" id="historyBtn" title="Histórico de divisões" aria-label="Histórico"><i class="fa-solid fa-clock-rotate-left"></i></button>
       <button class="icon-btn" id="themeBtn" title="Tema" aria-label="Tema"><i class="fa-solid fa-moon"></i></button>
       <button class="icon-btn" id="settingsBtn" title="Definições" aria-label="Definições"><i class="fa-solid fa-sliders"></i></button>

@@ -9,3 +9,15 @@
   for = "/sw.js"
   [headers.values]
     Cache-Control = "no-cache"
+
+# Partilha a partir da galeria antes de o service worker estar ativo.
+[[redirects]]
+  from = "/share-target"
+  to = "/"
+  status = 302
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"
+    Cache-Control = "no-cache"
