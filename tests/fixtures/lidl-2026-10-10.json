@@ -1,0 +1,16 @@
+{
+  "store": "Lidl", "location": "Brno, Pod nemocnicí 817/41", "date": "2026-10-10", "time": "19:49", "currency": "CZK",
+  "total": 228.96, "paymentMethod": "Lidl Pay",
+  "items": [
+    { "original": "Maso z Farmy Vepřo", "translated": "Carne de porco da quinta", "category": "carne_peixe", "emoji": "🥩", "quantity": 1, "unit": "un", "unitPrice": null, "basePrice": 84.90, "discount": 50.94, "discountLabel": "SLEVA 60%", "price": 33.96 },
+    { "original": "Hamburger. housky", "translated": "Pães de hambúrguer", "category": "padaria", "emoji": "🍔", "quantity": 1, "unit": "un", "unitPrice": null, "basePrice": 26.90, "discount": 0, "price": 26.90 },
+    { "original": "Jemný kečup", "translated": "Ketchup suave", "category": "mercearia", "emoji": "🍅", "quantity": 1, "unit": "un", "basePrice": 37.90, "discount": 0, "price": 37.90 },
+    { "original": "Sýr Tilsiter", "translated": "Queijo Tilsiter", "category": "laticinios_ovos", "emoji": "🧀", "quantity": 1, "unit": "un", "basePrice": 29.90, "discount": 0, "price": 29.90 },
+    { "original": "Olomoucké tvarůžky", "translated": "Queijo de Olomouc (tvarůžky)", "category": "laticinios_ovos", "emoji": "🧀", "quantity": 1, "unit": "un", "basePrice": 39.90, "discount": 0, "price": 39.90 },
+    { "original": "Croissant máslový", "translated": "Croissant de manteiga", "category": "padaria", "emoji": "🥐", "quantity": 3, "unit": "un", "unitPrice": 9.90, "basePrice": 29.70, "discount": 0, "price": 29.70 },
+    { "original": "Salát Rodinný mix", "translated": "Salada mista família", "category": "fruta_legumes", "emoji": "🥗", "quantity": 1, "unit": "un", "basePrice": 22.90, "discount": 0, "price": 22.90 },
+    { "original": "Bagetka", "translated": "Baguete pequena", "category": "padaria", "emoji": "🥖", "quantity": 2, "unit": "un", "unitPrice": 3.90, "basePrice": 7.80, "discount": 0, "price": 7.80 }
+  ],
+  "discounts": [],
+  "warnings": []
+}
