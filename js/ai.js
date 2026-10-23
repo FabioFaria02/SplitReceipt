@@ -52,7 +52,7 @@ STEP 2 — ITEMS (one entry per product line that has its own price in the right
 GENERAL DISCOUNTS ("discounts")
 - ONLY coupons/discounts that apply to the whole purchase or cannot be safely tied to one product (e.g. Tesco Clubcard vouchers, "Kupón -10 %" at the end, staff discount). amount is positive.
 - If a coupon clearly names a single product, put it as that product's line discount instead.
-- A percentage discount printed after the subtotal (e.g. Billa "BILLA KLUB NAROZENINY 10 % -72,63", "Sleva 10 %") is a general discount: put it in "discounts".
+- A percentage discount printed after the subtotal (e.g. Billa "BILLA KLUB NAROZENINY 10 % -72,63", "Sleva 10 %") is a general discount: put it in "discounts" with amount = the printed amount (72.63) and percent = the percentage (10). For fixed-value coupons, percent = null.
 - Summary lines such as Lidl "Celková sleva" or Tesco "Clubcard savings" only REPEAT line discounts already listed: do NOT add them again.
 - Never count the same discount twice.
 
@@ -116,6 +116,7 @@ export const SCHEMA = {
           label: { type: "STRING" },
           translated: { type: "STRING" },
           amount: { type: "NUMBER" },
+          percent: nullableNumber,
         },
         required: ["label", "amount"],
       },

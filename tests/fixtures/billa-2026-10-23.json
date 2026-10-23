@@ -126,7 +126,8 @@
   {
    "label": "BILLA KLUB NAROZENINY 10 %",
    "translated": "Desconto de aniversário Billa Klub",
-   "amount": 72.63
+   "amount": 72.63,
+   "percent": 10
   }
  ],
  "warnings": []

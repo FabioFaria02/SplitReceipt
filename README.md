@@ -9,7 +9,9 @@ Divide recibos entre amigos sem fazer contas. Tiras uma foto (ou carregas uma im
 - **Tradução para português** de cada artigo, mantendo o nome original.
 - **Descontos**:
   - descontos de artigo (por exemplo, Lidl "SLEVA 60%") ficam no próprio artigo, ou podem ser espalhados por todos;
-  - cupões gerais (por exemplo, Tesco Clubcard) são repartidos proporcionalmente, por todos os artigos ou só pelos que escolheres.
+  - descontos gerais **em percentagem** (por exemplo, Billa Klub −10 %) tiram essa percentagem a cada artigo;
+  - cupões de **valor fixo** (por exemplo, Tesco −50 Kč) são repartidos em proporção ao preço;
+  - em ambos os casos podes aplicar o desconto a todos os artigos ou só aos que escolheres.
 - **Verificação do total**: compara a soma dos artigos com o total impresso e permite corrigir a diferença com um clique.
 - **Atribuição rápida**: botões por pessoa, "Todos", **pincel** para atribuir muitos artigos seguidos, e **partes diferentes** por pessoa.
 - **Por unidade**: em artigos com várias unidades (por exemplo, 3 croissants), escolhes quantas leva cada pessoa (1 para mim e 2 para a Inês), incluindo meias unidades.

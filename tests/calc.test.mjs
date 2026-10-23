@@ -109,3 +109,33 @@ test("linhas de valor zero (cupões a 0,00) são ignoradas", () => {
   const r = normalizeReceipt({ currency: "CZK", items: [{ original: "BK KUPON KC", price: 0 }, { original: "HOUSKA", price: 6.24 }] }, id);
   assert.equal(r.items.length, 1);
 });
+
+test("Billa Klub 10 %: deteta a percentagem e desconta 10 % de cada artigo", () => {
+  const raw = JSON.parse(readFileSync(new URL("./fixtures/billa-2026-10-23.json", import.meta.url)));
+  delete raw.discounts[0].percent; // mesmo sem a IA indicar, o "10 %" do nome chega
+  const r = normalizeReceipt(raw, id);
+  assert.equal(r.discounts[0].percent, 10);
+  r.rate = 1;
+  const b = receiptBreakdown(r, [A]);
+  assert.equal(Math.round(b.computedTotal * 100), 65366);
+  for (const it of r.items) {
+    assert.ok(Math.abs(b.perItem[it.id].effective - it.price * 0.9) < 1e-9, it.original);
+  }
+});
+
+test("percentagem só em alguns artigos mantém 10 % nesses artigos", () => {
+  const r = normalizeReceipt({ currency: "EUR", items: [{ original: "x", price: 10 }, { original: "y", price: 30 }] }, id);
+  r.discounts.push({ id: "p", label: "Sleva", amount: 4, percent: 10, target: "items", itemIds: [r.items[1].id] });
+  const b = receiptBreakdown(r, [A]);
+  assert.equal(b.perItem[r.items[0].id].effective, 10);
+  assert.equal(b.perItem[r.items[1].id].effective, 27);
+  assert.equal(b.discountTotals.p, 3);
+});
+
+test("cupão de valor fixo continua proporcional", () => {
+  const r = normalizeReceipt({ currency: "EUR", items: [{ original: "x", price: 10 }, { original: "y", price: 30 }], discounts: [{ label: "Kupón", amount: 4 }] }, id);
+  assert.equal(r.discounts[0].percent, null);
+  const b = receiptBreakdown(r, [A]);
+  assert.equal(b.perItem[r.items[0].id].effective, 9);
+  assert.equal(b.perItem[r.items[1].id].effective, 27);
+});

@@ -63,8 +63,11 @@ export function receiptBreakdown(receipt, participants = null) {
   const values = new Map(items.map(it => [it.id, itemBaseValue(it, receipt)]));
   const effective = new Map(values);
   const discountShare = new Map(items.map(it => [it.id, 0]));
+  const discountTotals = {};
 
-  const discounts = (receipt.discounts || []).map(d => ({ ...d, amount: num(d.amount) })).filter(d => d.amount !== 0);
+  const discounts = (receipt.discounts || [])
+    .map(d => ({ ...d, amount: num(d.amount), percent: Math.max(0, num(d.percent)) }))
+    .filter(d => d.amount !== 0 || d.percent > 0);
   if (receipt.lineDiscountMode === "spread") {
     const lineTotal = items.reduce((s, it) => s + Math.max(0, num(it.discount)), 0);
     if (lineTotal > 0) discounts.push({ id: "__line", amount: lineTotal, target: "all" });
@@ -80,8 +83,11 @@ export function receiptBreakdown(receipt, participants = null) {
     targets = targets.filter(it => values.get(it.id) > 0);
     const base = targets.reduce((s, it) => s + values.get(it.id), 0);
     if (base <= 0) continue;
+    // Desconto em percentagem: a mesma % em cada artigo; valor fixo: proporcional ao preço.
+    const amount = d.percent > 0 ? base * d.percent / 100 : d.amount;
+    discountTotals[d.id] = amount;
     for (const it of targets) {
-      const part = d.amount * values.get(it.id) / base;
+      const part = amount * values.get(it.id) / base;
       effective.set(it.id, effective.get(it.id) - part);
       discountShare.set(it.id, discountShare.get(it.id) + part);
     }
@@ -140,6 +146,7 @@ export function receiptBreakdown(receipt, participants = null) {
     itemCount: items.length,
     mismatch,
     printedTotal: printed,
+    discountTotals,
   };
 }
 
@@ -273,13 +280,24 @@ export function normalizeReceipt(raw, makeId) {
       label: String(d.label || d.original || "Desconto").trim(),
       translated: String(d.translated || d.labelTranslated || d.label || "Desconto").trim(),
       amount: Math.abs(parseAmount(d.amount) || 0),
+      percent: Math.abs(parseAmount(d.percent) || 0) || null,
       target: d.target === "items" ? "items" : "all",
       itemIds: Array.isArray(d.itemIds) ? d.itemIds : [],
     }))
-    .filter(d => d.amount > 0);
+    .filter(d => d.amount > 0 || d.percent > 0);
   const legacyGeneral = Math.abs(parseAmount(raw?.generalDiscountCzk) || 0);
   if (legacyGeneral > 0 && !discounts.length) {
     discounts.push({ id: id(), label: "Desconto geral", translated: "Desconto geral", amount: legacyGeneral, target: "all", itemIds: [] });
+  }
+
+  // "10 %" no nome do desconto: guarda como percentagem se bater com a soma dos artigos.
+  const itemsSum = items.reduce((s, it) => s + it.price, 0);
+  for (const d of discounts) {
+    if (d.percent > 0 && d.percent <= 100) continue;
+    d.percent = null;
+    const m = `${d.label} ${d.translated}`.match(/(\d{1,2}(?:[.,]\d+)?)\s*%/);
+    const pct = m ? parseAmount(m[1]) : null;
+    if (pct > 0 && itemsSum > 0 && Math.abs(itemsSum * pct / 100 - d.amount) <= Math.max(0.05, d.amount * 0.01)) d.percent = pct;
   }
 
   const currency = String(raw?.currency || "").toUpperCase().trim() || (raw?.totalCzk != null ? "CZK" : "EUR");

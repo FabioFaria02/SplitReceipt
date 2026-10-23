@@ -517,3 +517,4 @@ html, body { max-width: 100%; overflow-x: hidden; }
   .r-warn { flex-wrap: wrap; }
   .r-warn .warn-actions { flex-direction: row; width: 100%; margin-left: 22px; flex-wrap: wrap; }
 }
+.r-discounts .chip { white-space: normal; text-align: left; line-height: 1.35; }

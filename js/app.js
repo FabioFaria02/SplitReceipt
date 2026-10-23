@@ -366,7 +366,7 @@ function renderReceipt(r) {
     ${mismatch ? `<div class="r-warn"><i class="fa-solid fa-circle-exclamation"></i><div>A soma dos artigos (${fmtMoney(b.computedTotal, cur)}) difere do total impresso (${fmtMoney(b.printedTotal, cur)}). Confirma os preços com a imagem do recibo${b.mismatch < 0 ? " ou adiciona a diferença como desconto" : " ou adiciona um acerto"}.</div><div class="warn-actions">${r.hasImage ? `<button class="btn sm edit-only" data-act="r-reread" data-r="${r.id}"><i class="fa-solid fa-wand-magic-sparkles"></i> Reler com IA</button>` : ""}<button class="btn sm ghost edit-only" data-act="r-fix" data-r="${r.id}">${b.mismatch < 0 ? "Adicionar desconto" : "Adicionar acerto"}</button></div></div>` : ""}
     ${warnings.length ? `<div class="r-warn"><i class="fa-solid fa-robot"></i><div>${warnings.map(esc).join("<br>")}</div><button class="btn sm ghost" data-act="r-dismiss" data-r="${r.id}" aria-label="Dispensar"><i class="fa-solid fa-xmark"></i></button></div>` : ""}
     ${r.discounts.length || (r.lineDiscountMode === "spread" && r.items.some(i => i.discount > 0)) ? `<div class="r-discounts">
-      ${r.discounts.map(d => `<button class="chip accent" data-act="r-discounts" data-r="${r.id}"><i class="fa-solid fa-ticket"></i>${esc(d.translated || d.label)} −${fmtMoney(d.amount, cur)} · ${d.target === "items" && d.itemIds?.length ? `${d.itemIds.length} artigos` : "proporcional"}</button>`).join("")}
+      ${r.discounts.map(d => `<button class="chip accent" data-act="r-discounts" data-r="${r.id}"><i class="fa-solid fa-${d.percent > 0 ? "percent" : "ticket"}"></i>${esc(d.translated || d.label)} −${d.percent > 0 ? `${fmtNum(d.percent, d.percent % 1 ? 1 : 0)} % (${fmtMoney(b.discountTotals[d.id] ?? d.amount, cur)})` : fmtMoney(b.discountTotals[d.id] ?? d.amount, cur)} · ${d.target === "items" && d.itemIds?.length ? `${d.itemIds.length} artigos` : "todos os artigos"}</button>`).join("")}
       ${r.lineDiscountMode === "spread" ? `<button class="chip accent" data-act="r-discounts" data-r="${r.id}"><i class="fa-solid fa-percent"></i>Descontos dos artigos espalhados por todos</button>` : ""}
     </div>` : ""}
     <div class="r-items">${r.items.map(it => renderItem(r, it, b.perItem[it.id], parts)).join("") || `<div class="empty-mini">Sem artigos. Adiciona manualmente.</div>`}</div>
@@ -442,7 +442,12 @@ function renderItem(r, it, info, parts) {
     tags.push(`<span class="tag">${q}${it.unitPrice ? ` × ${fmtMoney(it.unitPrice, cur)}` : ""}</span>`);
   }
   if (it.discount > 0) tags.push(`<span class="tag disc"><i class="fa-solid fa-tag"></i>−${fmtMoney(it.discount, cur)}${it.discountLabel ? ` · ${esc(it.discountLabel)}` : ""}${r.lineDiscountMode === "spread" ? " (espalhado)" : ""}</span>`);
-  if (info.discountShare > 0.004 && r.discounts.length) tags.push(`<span class="tag disc"><i class="fa-solid fa-ticket"></i>cupão −${fmtMoney(info.discountShare, cur)}</span>`);
+  if (info.discountShare > 0.004 && r.discounts.length) {
+    const pcts = r.discounts.filter(d => d.percent > 0 && (d.target !== "items" || d.itemIds?.includes(it.id)));
+    const onlyPct = pcts.length === r.discounts.filter(d => d.target !== "items" || d.itemIds?.includes(it.id)).length;
+    const pctLabel = onlyPct && pcts.length === 1 ? ` (${fmtNum(pcts[0].percent, pcts[0].percent % 1 ? 1 : 0)} %)` : "";
+    tags.push(`<span class="tag disc"><i class="fa-solid fa-${pctLabel ? "percent" : "ticket"}"></i>desconto −${fmtMoney(info.discountShare, cur)}${pctLabel}</span>`);
+  }
   if (it.suggested) tags.push(`<span class="tag ai"><i class="fa-solid fa-wand-magic-sparkles"></i>sugestão da memória</span>`);
   const sameName = memoryKey(it.original) === memoryKey(it.translated);
 
@@ -1670,8 +1675,8 @@ function discountsModal(rid) {
       ${lineTotal > 0 ? `<div class="field"><span class="lbl">Descontos já ligados a artigos (${fmtMoney(lineTotal, cur)})</span>
         <div class="seg" id="dMode"><button type="button" data-v="item" class="${mode !== "spread" ? "on" : ""}">Ficam no artigo</button><button type="button" data-v="spread" class="${mode === "spread" ? "on" : ""}">Espalhar por todos os artigos</button></div></div>` : ""}
       <div class="field"><span class="lbl">Descontos gerais / cupões (não ligados a um artigo)</span><div id="dList"></div>
-        <button type="button" class="btn sm" id="dAdd" style="align-self:flex-start"><i class="fa-solid fa-plus"></i> Adicionar desconto</button>
-        <span class="hint">Cada cupão é repartido proporcionalmente ao preço dos artigos escolhidos (todos, por defeito). Ex.: cupão Tesco de −50 Kč só nos artigos da Clubcard.</span>
+        <div class="pills"><button type="button" class="btn sm" id="dAddPct"><i class="fa-solid fa-percent"></i> Desconto em %</button><button type="button" class="btn sm" id="dAdd"><i class="fa-solid fa-plus"></i> Desconto de valor fixo</button></div>
+        <span class="hint"><b>Percentagem</b> (ex.: Billa Klub −10 %): cada artigo escolhido fica essa % mais barato. <b>Valor fixo</b> (ex.: cupão Tesco −50 Kč): repartido em proporção ao preço dos artigos escolhidos. Em ambos podes aplicar a todos os artigos ou só a alguns.</span>
       </div>`,
     foot: `<button class="btn ghost" data-close>Cancelar</button><button class="btn primary" id="dSave">Guardar</button>`,
     onMount: m => {
@@ -1681,19 +1686,37 @@ function discountsModal(rid) {
           <div class="rate-box" data-d="${idx}">
             <div class="grid3" style="grid-template-columns:2fr 1fr auto;align-items:end">
               <div class="field" style="margin:0"><label>Descrição</label><input class="input" data-f="translated" value="${esc(d.translated || d.label)}"></div>
-              <div class="field" style="margin:0"><label>Valor (${currencySymbol(cur)})</label><input class="input num" data-f="amount" inputmode="decimal" value="${fmtNum(d.amount)}"></div>
+              <div class="field" style="margin:0"><label>${d.percent > 0 ? "Percentagem (%)" : `Valor (${currencySymbol(cur)})`}</label><input class="input num" data-f="${d.percent > 0 ? "percent" : "amount"}" inputmode="decimal" value="${d.percent > 0 ? fmtNum(d.percent, d.percent % 1 ? 1 : 0) : fmtNum(d.amount)}"></div>
               <button type="button" class="icon-btn" data-del="${idx}" aria-label="Remover"><i class="fa-regular fa-trash-can"></i></button>
             </div>
+            <div class="seg" style="margin-top:10px"><button type="button" data-k="pct" class="${d.percent > 0 ? "on" : ""}"><i class="fa-solid fa-percent"></i> Percentagem</button><button type="button" data-k="fixed" class="${d.percent > 0 ? "" : "on"}">Valor fixo (proporcional)</button></div>
+            <div class="note" data-preview style="margin-top:6px"></div>
             <div class="seg" style="margin-top:10px"><button type="button" data-t="all" class="${d.target !== "items" ? "on" : ""}">Todos os artigos</button><button type="button" data-t="items" class="${d.target === "items" ? "on" : ""}">Só alguns artigos</button></div>
             ${d.target === "items" ? `<div style="margin-top:8px;max-height:260px;overflow:auto">${r.items.map(it => `<label class="check-row"><input type="checkbox" data-item="${it.id}" ${d.itemIds?.includes(it.id) ? "checked" : ""}><span class="grow">${esc(itemEmoji(it))} ${esc(it.translated)}</span><span class="muted num">${fmtMoney(it.price, cur)}</span></label>`).join("")}</div>` : ""}
           </div>`).join("") || `<div class="empty-mini">Sem descontos gerais.</div>`;
+        preview();
+      };
+      // Valor efetivo de cada desconto, calculado como na divisão real.
+      const preview = () => {
+        const b = receiptBreakdown({ ...r, discounts: draft.map(d => ({ ...d })), lineDiscountMode: mode }, split.participants);
+        q("#dList").querySelectorAll("[data-d]").forEach(box => {
+          const d = draft[box.dataset.d];
+          const amt = b.discountTotals[d.id];
+          const el = box.querySelector("[data-preview]");
+          if (!el) return;
+          el.innerHTML = amt == null ? "" : d.percent > 0
+            ? `= <strong>${fmtMoney(amt, cur)}</strong> · cada artigo fica ${fmtNum(d.percent, d.percent % 1 ? 1 : 0)} % mais barato`
+            : `= ${fmtMoney(amt, cur)} repartido em proporção ao preço (≈ ${fmtNum(b.discountTotals[d.id] / Math.max(0.01, (d.target === "items" && d.itemIds?.length ? r.items.filter(i => d.itemIds.includes(i.id)) : r.items).reduce((a, i) => a + Math.max(0, i.price), 0)) * 100, 1)} % de cada artigo)`;
+        });
       };
       q("#dList").addEventListener("input", e => {
         const box = e.target.closest("[data-d]");
         if (!box || !e.target.dataset.f) return;
         const d = draft[box.dataset.d];
         if (e.target.dataset.f === "amount") d.amount = Math.abs(parseAmount(e.target.value) || 0);
+        else if (e.target.dataset.f === "percent") d.percent = Math.min(100, Math.abs(parseAmount(e.target.value) || 0));
         else d.translated = d.label = e.target.value;
+        preview();
       });
       q("#dList").addEventListener("change", e => {
         const box = e.target.closest("[data-d]");
@@ -1702,24 +1725,36 @@ function discountsModal(rid) {
         const set = new Set(d.itemIds || []);
         e.target.checked ? set.add(e.target.dataset.item) : set.delete(e.target.dataset.item);
         d.itemIds = [...set];
+        preview();
       });
       q("#dList").addEventListener("click", e => {
         const box = e.target.closest("[data-d]");
         const del = e.target.closest("[data-del]");
         const t = e.target.closest("[data-t]");
+        const k = e.target.closest("[data-k]");
         if (del) { draft.splice(Number(del.dataset.del), 1); draw(); }
         else if (t && box) { draft[box.dataset.d].target = t.dataset.t; draw(); }
+        else if (k && box) {
+          const d = draft[box.dataset.d];
+          const b = receiptBreakdown({ ...r, discounts: draft, lineDiscountMode: mode }, split.participants);
+          const base = (d.target === "items" && d.itemIds?.length ? r.items.filter(i => d.itemIds.includes(i.id)) : r.items).reduce((a, i) => a + Math.max(0, i.price), 0);
+          if (k.dataset.k === "pct" && !(d.percent > 0)) d.percent = base > 0 ? round2(((b.discountTotals[d.id] ?? d.amount) / base) * 100) || 10 : 10;
+          if (k.dataset.k === "fixed" && d.percent > 0) { d.amount = round2(b.discountTotals[d.id] ?? d.amount); d.percent = null; }
+          draw();
+        }
       });
-      q("#dAdd").onclick = () => { draft.push({ id: uid(), label: "Cupão", translated: "Cupão", amount: 0, target: "all", itemIds: [] }); draw(); };
+      q("#dAdd").onclick = () => { draft.push({ id: uid(), label: "Cupão", translated: "Cupão", amount: 0, percent: null, target: "all", itemIds: [] }); draw(); };
+      q("#dAddPct").onclick = () => { draft.push({ id: uid(), label: "Desconto 10 %", translated: "Desconto 10 %", amount: 0, percent: 10, target: "all", itemIds: [] }); draw(); };
       q("#dMode")?.addEventListener("click", e => {
         const btn = e.target.closest("button");
         if (!btn) return;
         mode = btn.dataset.v;
         q("#dMode").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === btn));
+        preview();
       });
       draw();
       q("#dSave").onclick = () => {
-        r.discounts = draft.filter(d => d.amount > 0);
+        r.discounts = draft.filter(d => d.amount > 0 || d.percent > 0);
         r.lineDiscountMode = mode;
         closeModal();
         commit();
