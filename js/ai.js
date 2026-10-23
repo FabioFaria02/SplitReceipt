@@ -16,9 +16,28 @@ If several images are given, they are consecutive parts of ONE single long recei
 CURRENCY
 - "currency" is the ISO 4217 code of the amounts: Kč→CZK, zł/PLN→PLN, Ft/HUF→HUF, €→EUR, lei/RON→RON, лв→BGN, £→GBP, Fr./CHF→CHF, kr→DKK/SEK/NOK (decide by country/language), $→USD. Use the shop's country and language when the symbol is missing.
 
-ITEMS (one entry per purchased product)
-- Quantity / weight detail lines are NOT items. Merge them into the product they belong to, e.g. "3 ks x 9,90 Kč/ks", "2 x 3,90", "N 0,130 kg (V) x 149,00 Kč/kg", tare lines like "0,002 kg (PT)" or "PT: 0,002 kg".
-  These detail lines can be printed AFTER the product (Lidl) or BEFORE the product (Billa). Decide by arithmetic: quantity × unitPrice must equal that product's line price.
+STEP 1 — TRANSCRIBE ("lines")
+- Before building items, copy EVERY line of the receipt body into "lines", in order, from the first product down to the final total: product lines, quantity/weight lines, discount lines, subtotal and total. Do not skip any line, even short or strange names (e.g. "CLEVER", "BURTY").
+- For each line: "text" = the text as printed (without the VAT letter), "amount" = the number printed in the right-hand price column on THAT SAME line, or null if that line has no price in the right column.
+- Read each amount straight across from its own line. Never move a price up or down to a neighbouring line.
+
+STEP 2 — ITEMS (one entry per product line that has its own price in the right column)
+- Every line whose "amount" is not null and that is a product becomes exactly one item, and its price is exactly that line's amount. The number of items must equal the number of priced product lines (ignoring 0,00 lines and totals).
+- Quantity / weight detail lines have NO price in the right column. They are NOT items. Merge them into the product they belong to, e.g. "3 ks x 9,90 Kč/ks", "2 x 3,90", "N 0,130 kg (V) x 149,00 Kč/kg", tare lines like "0,002 kg (PT)" or "PT: 0,002 kg".
+- These detail lines are printed AFTER the product in some stores (Lidl, Kaufland) and BEFORE the product in others (Billa, Albert, Penny). ALWAYS decide by arithmetic: the detail belongs to the product whose own line price equals quantity × unitPrice (±0,01). Never change a product's price to make a detail line fit.
+- Billa example (detail lines come BEFORE their product):
+    CV KUCHYŇSKÉ ROLE            C   22,90   → item price 22,90 (quantity 1)
+    2,000 ks x 11,90 Kč/ks                   → 2 × 11,90 = 23,80 → belongs to the NEXT line
+    CV OVES. VLOČKY JEM          B   23,80   → item price 23,80, quantity 2, unitPrice 11,90
+    BURTY                        B   74,90   → item price 74,90 (quantity 1)
+    N 0,970 kg (V) x 22,90 Kč/kg             → 0,970 × 22,90 = 22,21 → NEXT line
+    0,002 kg (PT)                            → tare, ignore
+    BANÁNY                       B   22,21   → item price 22,21, quantity 0,970 kg
+    CLEVER                       B  139,90   → its own item, price 139,90
+    N 0,218 kg (V) x 149,00 Kč/kg            → 32,48 → NEXT line
+    ČESNEK VOLNÝ                 B   32,48   → item price 32,48, quantity 0,218 kg
+    2,000 ks x 0,00 Kč/ks / KUPON NAROZENINY 0,00 → ignore (zero value)
+    Mezisoučet 726,29 = sum of all item prices; BILLA KLUB NAROZENINY 10 % -72,63 → general discount; Celkem 653,66 = total.
 - Ignore lines whose amount is 0 (e.g. "BK KUPON KC 0,00", "UVÍTACÍ KUPÓN 0,00"), VAT tables (DPH, VAT, ÁFA, PTU, IVA), payment/card lines, loyalty points, change, subtotal and total lines.
 - price = final amount charged for that line AFTER any discount that belongs to that specific line.
 - basePrice = amount of that line before its own discount (equal to price when there is no line discount).
@@ -33,12 +52,14 @@ ITEMS (one entry per purchased product)
 GENERAL DISCOUNTS ("discounts")
 - ONLY coupons/discounts that apply to the whole purchase or cannot be safely tied to one product (e.g. Tesco Clubcard vouchers, "Kupón -10 %" at the end, staff discount). amount is positive.
 - If a coupon clearly names a single product, put it as that product's line discount instead.
+- A percentage discount printed after the subtotal (e.g. Billa "BILLA KLUB NAROZENINY 10 % -72,63", "Sleva 10 %") is a general discount: put it in "discounts".
 - Summary lines such as Lidl "Celková sleva" or Tesco "Clubcard savings" only REPEAT line discounts already listed: do NOT add them again.
 - Never count the same discount twice.
 
 TOTALS AND METADATA
 - total = final amount paid as printed (K PLATBĚ, Celkem, Celková zaplacená částka, Razem/SUMA PLN, Összesen, Total, TOTAL A PAGAR…).
-- Self-check: sum(items.price) − sum(discounts.amount) must equal total. If it does not, re-read the receipt carefully. If it still differs, describe the problem in "warnings" (pt-PT).
+- subtotal = the printed subtotal before general discounts (Mezisoučet, Suma, Subtotal) or null if not printed.
+- Self-check BEFORE answering: sum(items.price) must equal subtotal (when printed), and sum(items.price) − sum(discounts.amount) must equal total. If not, compare items against "lines" again: look for a skipped product or a price shifted to the wrong product. Only if it still differs, describe the problem in "warnings" (pt-PT).
 - store: the brand (Lidl, Billa, Tesco, Albert, Penny, Kaufland, Biedronka, Żabka, Spar, Continente, Pingo Doce, restaurant name…). location: short city/address.
 - date: YYYY-MM-DD (receipts print DD.MM.YY, DD/MM/YY or DD.MM.YYYY; two-digit years are 20YY). time: HH:MM.
 - paymentMethod: e.g. "Cartão", "Dinheiro", "Lidl Pay".
@@ -55,6 +76,15 @@ export const SCHEMA = {
     date: { type: "STRING", nullable: true },
     time: { type: "STRING", nullable: true },
     currency: { type: "STRING" },
+    lines: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: { text: { type: "STRING" }, amount: nullableNumber },
+        required: ["text"],
+      },
+    },
+    subtotal: nullableNumber,
     total: nullableNumber,
     paymentMethod: { type: "STRING", nullable: true },
     items: {
@@ -93,15 +123,50 @@ export const SCHEMA = {
     warnings: { type: "ARRAY", items: { type: "STRING" } },
   },
   required: ["store", "currency", "items"],
-  propertyOrdering: ["store", "location", "date", "time", "currency", "items", "discounts", "total", "paymentMethod", "warnings"],
+  propertyOrdering: ["store", "location", "date", "time", "currency", "lines", "items", "discounts", "subtotal", "total", "paymentMethod", "warnings"],
 };
 
-export function buildGeminiBody(files, { schema = true } = {}) {
+/**
+ * feedback (opcional): { previous: resposta anterior (texto JSON), message: correção }
+ * → conversa de 3 turnos para a IA reler o recibo.
+ */
+export function buildGeminiBody(files, { schema = true, feedback = null } = {}) {
   const parts = [{ text: PROMPT }];
   for (const f of files) parts.push({ inline_data: { mime_type: f.mimeType, data: f.data } });
-  const generationConfig = { responseMimeType: "application/json", temperature: 0.1 };
+  const generationConfig = { responseMimeType: "application/json", temperature: feedback ? 0.2 : 0.1 };
   if (schema) generationConfig.responseSchema = SCHEMA;
-  return { contents: [{ role: "user", parts }], generationConfig };
+  const contents = [{ role: "user", parts }];
+  if (feedback?.previous && feedback?.message) {
+    contents.push({ role: "model", parts: [{ text: String(feedback.previous).slice(0, 60000) }] });
+    contents.push({ role: "user", parts: [{ text: String(feedback.message).slice(0, 4000) }] });
+  }
+  return { contents, generationConfig };
+}
+
+/** Confere a resposta da IA: soma dos artigos vs subtotal/total impressos. */
+export function checkReceipt(raw) {
+  const n = v => (typeof v === "number" && Number.isFinite(v) ? v : Number(String(v ?? "").replace(",", ".")) || 0);
+  const items = Array.isArray(raw?.items) ? raw.items : [];
+  const itemsSum = items.reduce((a, it) => a + n(it.price), 0);
+  const disc = (Array.isArray(raw?.discounts) ? raw.discounts : []).reduce((a, d) => a + Math.abs(n(d.amount)), 0);
+  const total = raw?.total == null ? null : n(raw.total);
+  const subtotal = raw?.subtotal == null ? null : n(raw.subtotal);
+  const r2 = x => Math.round(x * 100) / 100;
+  const totalDiff = total == null ? 0 : r2(total - (itemsSum - disc));
+  const subtotalDiff = subtotal == null || !subtotal ? 0 : r2(subtotal - itemsSum);
+  const diff = Math.abs(totalDiff) >= 0.02 ? totalDiff : subtotalDiff;
+  return { ok: Math.abs(diff) < 0.02, diff, itemsSum: r2(itemsSum), discounts: r2(disc), total, subtotal, count: items.length };
+}
+
+/** Mensagem para a IA corrigir a leitura quando a soma não bate. */
+export function correctionMessage(check) {
+  const ref = check.subtotal ? `the printed subtotal is ${check.subtotal}` : `the printed total is ${check.total}`;
+  return `Your answer is wrong: the ${check.count} item prices add up to ${check.itemsSum} (minus ${check.discounts} of general discounts), but ${ref}. The difference is ${Math.abs(check.diff).toFixed(2)} (${check.diff > 0 ? "items are MISSING or too cheap" : "items are duplicated or too expensive"}).
+Re-read the receipt image line by line from the top:
+1. Rewrite "lines" completely, one entry per printed line, with the amount from the right-hand column of that same line.
+2. Make sure every priced product line is an item (look for skipped short names), and that no price was shifted to the line above or below.
+3. Quantity/weight lines (e.g. "2,000 ks x 11,90", "N 0,970 kg x 22,90") belong to the product whose price equals quantity × unit price — in Billa/Albert/Penny that is the product BELOW them.
+Return the complete corrected JSON.`;
 }
 
 export function extractReceiptJson(data) {
@@ -126,7 +191,7 @@ export function extractReceiptJson(data) {
  * Chama a Gemini tentando vários modelos (caso algum não exista na conta)
  * e, se o schema for rejeitado, repete sem schema.
  */
-export async function callGemini({ apiKey, files, models = DEFAULT_MODELS, fetchImpl = fetch }) {
+export async function callGemini({ apiKey, files, models = DEFAULT_MODELS, fetchImpl = fetch, feedback = null }) {
   let lastError = null;
   for (const model of models.filter(Boolean)) {
     for (const schema of [true, false]) {
@@ -136,7 +201,7 @@ export async function callGemini({ apiKey, files, models = DEFAULT_MODELS, fetch
         response = await fetchImpl(url, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-          body: JSON.stringify(buildGeminiBody(files, { schema })),
+          body: JSON.stringify(buildGeminiBody(files, { schema, feedback })),
         });
         const raw = await response.text();
         try { data = JSON.parse(raw); } catch { data = null; }

@@ -1,6 +1,6 @@
 // Service worker: app instalável, funciona offline para consultar divisões
 // e recebe recibos partilhados a partir da galeria (Android).
-const VERSION = "v5";
+const VERSION = "v6";
 const CACHE = `splitreceipt-${VERSION}`;
 const SHARE_CACHE = "splitreceipt-share";
 const SHELL = [

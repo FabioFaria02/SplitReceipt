@@ -1,0 +1,133 @@
+{
+ "store": "Billa",
+ "location": "Brno, Švermova 654/9",
+ "date": "2026-10-23",
+ "time": "19:26",
+ "currency": "CZK",
+ "subtotal": 726.29,
+ "total": 653.66,
+ "items": [
+  {
+   "original": "BOROVKY 125G",
+   "translated": "Mirtilos 125 g",
+   "category": "fruta_legumes",
+   "emoji": "🫐",
+   "price": 34.9
+  },
+  {
+   "original": "F.JOSEF BROSKVE",
+   "translated": "Pêssegos F. Josef",
+   "category": "fruta_legumes",
+   "emoji": "🍑",
+   "price": 34.9
+  },
+  {
+   "original": "OKURKA KUS",
+   "translated": "Pepino",
+   "category": "fruta_legumes",
+   "emoji": "🥒",
+   "price": 14.9
+  },
+  {
+   "original": "BALKÁNSKÝ SÝR",
+   "translated": "Queijo dos Balcãs",
+   "category": "laticinios_ovos",
+   "emoji": "🧀",
+   "price": 72.9
+  },
+  {
+   "original": "EIDAM 20%",
+   "translated": "Queijo Edam 20%",
+   "category": "laticinios_ovos",
+   "emoji": "🧀",
+   "price": 34.9
+  },
+  {
+   "original": "BRAMBOROVA KASE",
+   "translated": "Puré de batata",
+   "category": "mercearia",
+   "emoji": "🥔",
+   "price": 34.9
+  },
+  {
+   "original": "RAJČE CHERRY 250G",
+   "translated": "Tomate cherry 250 g",
+   "category": "fruta_legumes",
+   "emoji": "🍅",
+   "price": 39.9
+  },
+  {
+   "original": "TORTILLA ORIGINAL",
+   "translated": "Tortilhas originais",
+   "category": "padaria",
+   "emoji": "🌮",
+   "price": 84.9
+  },
+  {
+   "original": "CV KUCHYŇSKÉ ROLE",
+   "translated": "Rolo de cozinha Clever",
+   "category": "casa_limpeza",
+   "emoji": "🧻",
+   "price": 22.9
+  },
+  {
+   "original": "CV OVES. VLOČKY JEM",
+   "translated": "Flocos de aveia finos Clever",
+   "category": "mercearia",
+   "emoji": "🥣",
+   "quantity": 2,
+   "unit": "un",
+   "unitPrice": 11.9,
+   "price": 23.8
+  },
+  {
+   "original": "BILLA GRANA PADANO",
+   "translated": "Queijo Grana Padano Billa",
+   "category": "laticinios_ovos",
+   "emoji": "🧀",
+   "price": 57.9
+  },
+  {
+   "original": "BURTY",
+   "translated": "Salsichas (buřty)",
+   "category": "carne_peixe",
+   "emoji": "🌭",
+   "price": 74.9
+  },
+  {
+   "original": "BANÁNY",
+   "translated": "Bananas",
+   "category": "fruta_legumes",
+   "emoji": "🍌",
+   "quantity": 0.97,
+   "unit": "kg",
+   "unitPrice": 22.9,
+   "price": 22.21
+  },
+  {
+   "original": "CLEVER",
+   "translated": "Produto Clever",
+   "category": "outros",
+   "emoji": "🛒",
+   "price": 139.9
+  },
+  {
+   "original": "ČESNEK VOLNÝ",
+   "translated": "Alho avulso",
+   "category": "fruta_legumes",
+   "emoji": "🧄",
+   "quantity": 0.218,
+   "unit": "kg",
+   "unitPrice": 149.0,
+   "price": 32.48
+  }
+ ],
+ "discounts": [
+  {
+   "label": "BILLA KLUB NAROZENINY 10 %",
+   "translated": "Desconto de aniversário Billa Klub",
+   "amount": 72.63
+  }
+ ],
+ "warnings": []
+}

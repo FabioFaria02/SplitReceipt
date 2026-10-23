@@ -25,7 +25,9 @@ export default async (req) => {
 
   const models = [process.env.GEMINI_MODEL, ...DEFAULT_MODELS].filter((m, i, a) => m && a.indexOf(m) === i);
   try {
-    const { receipt, model } = await callGemini({ apiKey, files, models });
+    const fb = body?.feedback;
+    const feedback = fb && typeof fb.previous === "string" && typeof fb.message === "string" ? { previous: fb.previous, message: fb.message } : null;
+    const { receipt, model } = await callGemini({ apiKey, files, models, feedback });
     return reply(200, { receipt, model });
   } catch (err) {
     const status = err?.status && err.status >= 400 && err.status < 600 ? err.status : 502;

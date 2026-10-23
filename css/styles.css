@@ -511,3 +511,9 @@ html, body { max-width: 100%; overflow-x: hidden; }
   .dropzone .dz-actions .btn i { display: none; }
   .bottom-bar button:not(.bb-main) { padding: 4px 10px; }
 }
+.r-warn .warn-actions { margin-left: auto; display: flex; flex-direction: column; gap: 6px; flex: none; }
+.r-warn .warn-actions .btn { margin: 0; }
+@media (max-width: 560px) {
+  .r-warn { flex-wrap: wrap; }
+  .r-warn .warn-actions { flex-direction: row; width: 100%; margin-left: 22px; flex-wrap: wrap; }
+}

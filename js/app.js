@@ -1,5 +1,5 @@
 import { splitSummary, receiptBreakdown, memoryKey, normalizeReceipt, parseAmount, round2 } from "./calc.js";
-import { callGemini, CATEGORIES } from "./ai.js";
+import { callGemini, CATEGORIES, checkReceipt, correctionMessage } from "./ai.js";
 import { fetchRate, CURRENCIES, currencySymbol } from "./rates.js";
 import { KEYS, load, save, saveImages, getImages, deleteImages, pruneImages } from "./storage.js";
 import { encodeShare, decodeShare, compactSplit } from "./share.js";
@@ -363,7 +363,7 @@ function renderReceipt(r) {
       <button class="icon-btn sm edit-only" data-act="r-delete" data-r="${r.id}" title="Apagar recibo" aria-label="Apagar recibo"><i class="fa-regular fa-trash-can"></i></button>
       <button class="icon-btn sm collapse-btn" data-act="r-collapse" data-r="${r.id}" title="Encolher" aria-label="Encolher"><i class="fa-solid fa-chevron-down"></i></button>
     </div>
-    ${mismatch ? `<div class="r-warn"><i class="fa-solid fa-circle-exclamation"></i><div>A soma dos artigos (${fmtMoney(b.computedTotal, cur)}) difere do total impresso (${fmtMoney(b.printedTotal, cur)}). Confirma os preços com a imagem do recibo${b.mismatch < 0 ? " ou adiciona a diferença como desconto" : " ou adiciona um acerto"}.</div><button class="btn sm edit-only" data-act="r-fix" data-r="${r.id}">${b.mismatch < 0 ? "Adicionar desconto" : "Adicionar acerto"}</button></div>` : ""}
+    ${mismatch ? `<div class="r-warn"><i class="fa-solid fa-circle-exclamation"></i><div>A soma dos artigos (${fmtMoney(b.computedTotal, cur)}) difere do total impresso (${fmtMoney(b.printedTotal, cur)}). Confirma os preços com a imagem do recibo${b.mismatch < 0 ? " ou adiciona a diferença como desconto" : " ou adiciona um acerto"}.</div><div class="warn-actions">${r.hasImage ? `<button class="btn sm edit-only" data-act="r-reread" data-r="${r.id}"><i class="fa-solid fa-wand-magic-sparkles"></i> Reler com IA</button>` : ""}<button class="btn sm ghost edit-only" data-act="r-fix" data-r="${r.id}">${b.mismatch < 0 ? "Adicionar desconto" : "Adicionar acerto"}</button></div></div>` : ""}
     ${warnings.length ? `<div class="r-warn"><i class="fa-solid fa-robot"></i><div>${warnings.map(esc).join("<br>")}</div><button class="btn sm ghost" data-act="r-dismiss" data-r="${r.id}" aria-label="Dispensar"><i class="fa-solid fa-xmark"></i></button></div>` : ""}
     ${r.discounts.length || (r.lineDiscountMode === "spread" && r.items.some(i => i.discount > 0)) ? `<div class="r-discounts">
       ${r.discounts.map(d => `<button class="chip accent" data-act="r-discounts" data-r="${r.id}"><i class="fa-solid fa-ticket"></i>${esc(d.translated || d.label)} −${fmtMoney(d.amount, cur)} · ${d.target === "items" && d.itemIds?.length ? `${d.itemIds.length} artigos` : "proporcional"}</button>`).join("")}
@@ -769,13 +769,13 @@ async function prepareFile(file) {
   return { mimeType: "image/jpeg", data: c.toDataURL("image/jpeg", 0.86).split(",")[1] };
 }
 
-async function parseWithAI(files) {
+async function parseWithAI(files, feedback = null) {
   let backendError = "";
   try {
     const res = await fetch(API_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ files }),
+      body: JSON.stringify({ files, feedback }),
     });
     const ct = res.headers.get("content-type") || "";
     const data = ct.includes("json") ? await res.json().catch(() => null) : null;
@@ -786,7 +786,7 @@ async function parseWithAI(files) {
     backendError = "Sem ligação ao servidor de IA.";
   }
   if (settings.geminiKey) {
-    const { receipt } = await callGemini({ apiKey: settings.geminiKey, files });
+    const { receipt } = await callGemini({ apiKey: settings.geminiKey, files, feedback });
     return receipt;
   }
   throw new Error(`${backendError} Configura GEMINI_API_KEY no Netlify ou uma chave pessoal nas Definições.`);
@@ -819,13 +819,27 @@ async function runJob(job) {
   job.running = true;
   try {
     setJob(job, { status: "A preparar imagem…" });
-    const prepared = [];
-    for (const f of job.files) prepared.push(await prepareFile(f));
+    const prepared = job.prepared ? [...job.prepared] : [];
+    if (!job.prepared) for (const f of job.files) prepared.push(await prepareFile(f));
     setJob(job, { status: "A IA está a ler os artigos, descontos e total…" });
-    const raw = await parseWithAI(prepared);
+    let raw = await parseWithAI(prepared);
+    let check = checkReceipt(raw);
+    // Se a soma não bate com o total, pede à IA para reler (até 2 vezes) e fica com a melhor leitura.
+    for (let attempt = 1; !check.ok && attempt <= 2; attempt++) {
+      setJob(job, { status: `A soma não bate certo (${fmtNum(Math.abs(check.diff))}) — a IA está a reler o recibo (${attempt}/2)…` });
+      try {
+        const retry = await parseWithAI(prepared, { previous: JSON.stringify(raw), message: correctionMessage(check) });
+        const c2 = checkReceipt(retry);
+        if (Math.abs(c2.diff) < Math.abs(check.diff) || (c2.ok && !check.ok)) { raw = retry; check = c2; }
+      } catch (err) {
+        console.warn("Releitura falhou", err);
+        break;
+      }
+    }
     setJob(job, { status: "A converter para euros…" });
     const receipt = normalizeReceipt(raw, uid);
-    await addReceipt(receipt, prepared);
+    if (job.replaceId) await replaceReceipt(job.replaceId, receipt);
+    else await addReceipt(receipt, prepared);
     ui.jobs = ui.jobs.filter(j => j !== job);
   } catch (err) {
     console.error(err);
@@ -834,6 +848,28 @@ async function runJob(job) {
   }
   render();
   pumpJobs();
+}
+
+/** Substitui a leitura de um recibo existente, mantendo id, imagem, pagador e taxa. */
+async function replaceReceipt(id, fresh) {
+  const old = findR(id);
+  if (!old) return;
+  if (!fresh.items.length) throw new Error("A IA não encontrou artigos na releitura.");
+  const keepRate = old.currency === fresh.currency && old.rateSource === "manual";
+  Object.assign(fresh, { id: old.id, hasImage: old.hasImage, payerId: old.payerId, eurCharged: old.eurCharged, lineDiscountMode: old.lineDiscountMode });
+  if (keepRate) Object.assign(fresh, { rate: old.rate, rateSource: old.rateSource, rateDate: old.rateDate });
+  else await applyRate(fresh);
+  applyMemory(fresh);
+  // Mantém atribuições de artigos com o mesmo nome original.
+  const prev = new Map(old.items.filter(it => Object.keys(it.shares || {}).length).map(it => [memoryKey(it.original), it.shares]));
+  fresh.items.forEach(it => { const sh = prev.get(memoryKey(it.original)); if (sh) { it.shares = { ...sh }; it.suggested = false; } });
+  const snapshot = JSON.stringify(split);
+  split.receipts[split.receipts.findIndex(r => r.id === id)] = fresh;
+  persist();
+  const b = receiptBreakdown(fresh, split.participants);
+  toast(`${fresh.store} relido: ${fresh.items.length} artigos${b.printedTotal != null && Math.abs(b.mismatch) < 0.01 ? " · total confere ✓" : ""}`, "good", {
+    label: "Anular", run: () => { split = JSON.parse(snapshot); persist(); render(); },
+  });
 }
 
 async function addReceipt(r, images) {
@@ -969,6 +1005,16 @@ const actions = {
   "r-clear"(el) {
     const r = findR(el.dataset.r);
     withUndo("Atribuições limpas.", () => r.items.forEach(it => { it.shares = {}; it.suggested = false; }));
+  },
+  async "r-reread"(el) {
+    const r = findR(el.dataset.r);
+    const imgs = await getImages(r.id);
+    if (!imgs?.length) return toast("A imagem deste recibo não está guardada neste dispositivo.", "warn");
+    if (ui.jobs.some(j => j.replaceId === r.id)) return;
+    ui.jobs.push({ id: uid(), prepared: imgs, replaceId: r.id, label: `A reler ${r.store}`, status: "Na fila…", error: null, running: false });
+    render();
+    pumpJobs();
+    document.querySelector(".loading")?.scrollIntoView({ behavior: "smooth", block: "center" });
   },
   "r-dismiss"(el) { findR(el.dataset.r).warnings = []; commit(); },
   "r-fix"(el) {
