@@ -29,14 +29,21 @@ Divide recibos entre amigos sem fazer contas. Tiras uma foto (ou carregas uma im
 - **Android (Chrome)**: botão 📱 no topo, ou menu ⋮ → "Instalar app".
 - **iPhone (Safari)**: Partilhar → "Adicionar ao ecrã principal".
 
-## Deploy no Netlify
+## Publicar no GitHub Pages
 
-1. Liga este repositório ao Netlify ("Import from Git"). Não há passo de build: o `netlify.toml` já define tudo.
-2. Em **Site configuration → Environment variables**, cria `GEMINI_API_KEY` com a tua chave da Google AI Studio.
-3. (Opcional) Define `GEMINI_MODEL` para escolher o modelo. Por defeito é usado `gemini-3.1-flash-lite`, com outros modelos de reserva.
-4. Faz um novo deploy.
+O site é publicado por um GitHub Action (`.github/workflows/pages.yml`) a cada push para o `main`. O Action corre os testes, injeta a chave Gemini guardada nos **Secrets** e publica.
 
-Sem servidor (por exemplo, no GitHub Pages ou a abrir localmente), podes colocar uma chave Gemini pessoal em **Definições**. Essa chave fica guardada apenas no teu dispositivo.
+1. **Chave Gemini**: cria uma chave gratuita em [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey).
+2. **Guardar a chave no GitHub**: repositório → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**. Nome `GEMINI_API_KEY`, valor a chave. A chave nunca fica no código do repositório.
+3. **Ativar o Pages**: **Settings** → **Pages** → **Build and deployment → Source**: **GitHub Actions**.
+4. **Publicar**: separador **Actions** → **Publicar no GitHub Pages** → **Run workflow** (ou faz um push para o `main`). O site fica em `https://<utilizador>.github.io/SplitReceipt/`.
+5. **Proteger a chave** (importante): num site sem servidor, a chave vai para o browser de quem abre o site. No [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials), abre a chave e em **Application restrictions** escolhe **Websites** com `https://<utilizador>.github.io/*`. Assim, só funciona a partir do teu site.
+
+Opcional: em **Secrets and variables → Actions → Variables**, `GEMINI_MODEL` escolhe outro modelo. Cada pessoa pode também pôr uma chave própria nas **Definições** da app, que tem prioridade sobre a do site.
+
+### Netlify (opcional)
+
+Também funciona no Netlify, com a chave guardada no servidor: define `GEMINI_API_KEY` (e, se quiseres, `GEMINI_MODEL`) nas variáveis de ambiente. A função está em `netlify/functions/parse-receipt.mjs`.
 
 ## Desenvolvimento
 

@@ -1,5 +1,6 @@
 import { splitSummary, receiptBreakdown, memoryKey, normalizeReceipt, parseAmount, round2 } from "./calc.js";
-import { callGemini, CATEGORIES, checkReceipt, correctionMessage } from "./ai.js";
+import { callGemini, CATEGORIES, checkReceipt, correctionMessage, DEFAULT_MODELS } from "./ai.js";
+import { CONFIG } from "./config.js";
 import { fetchRate, CURRENCIES, currencySymbol } from "./rates.js";
 import { KEYS, load, save, saveImages, getImages, deleteImages, pruneImages } from "./storage.js";
 import { encodeShare, decodeShare, compactSplit } from "./share.js";
@@ -26,6 +27,11 @@ const STORE_COLORS = {
   continente: "#E30613", "pingo doce": "#6BA539", dm: "#002878", rossmann: "#C3002F", ikea: "#0058A3", auchan: "#E2001A", carrefour: "#004E9F",
 };
 const API_ENDPOINT = "/api/parse-receipt";
+// GitHub Pages (e ficheiros locais) não têm servidor: a IA é chamada diretamente com a chave pessoal.
+const HAS_SERVER = !/\.github\.io$/i.test(location.hostname) && location.protocol !== "file:";
+/** Chave pessoal (Definições) tem prioridade; senão a chave do site (Secrets do GitHub). */
+const aiKey = () => settings.geminiKey || CONFIG.geminiKey || "";
+const aiModels = () => [CONFIG.geminiModel, ...DEFAULT_MODELS].filter((m, i, a) => m && a.indexOf(m) === i);
 const MAX_PARALLEL = 2;
 
 /* =========================================================
@@ -322,6 +328,7 @@ function renderReceipts() {
     <div class="loading glass ${j.error ? "err" : ""}">
       <div class="spinner">${j.error ? `<i class="fa-solid fa-xmark" style="color:var(--bad)"></i>` : ""}</div>
       <div class="grow"><strong>${esc(j.label)}</strong><span>${esc(j.error || j.status)}</span>${j.error ? "" : `<div class="shimmer"></div>`}</div>
+      ${j.error && j.needsKey ? `<button class="btn sm primary" data-act="ai-key" data-j="${j.id}"><i class="fa-solid fa-key"></i> Chave</button>` : ""}
       ${j.error ? `<button class="btn sm" data-act="job-retry" data-j="${j.id}"><i class="fa-solid fa-rotate-right"></i> Tentar de novo</button><button class="icon-btn sm" data-act="job-remove" data-j="${j.id}" aria-label="Remover"><i class="fa-solid fa-xmark"></i></button>` : ""}
     </div>`).join("");
   $("#receipts").innerHTML = jobs + split.receipts.map(renderReceipt).join("");
@@ -661,6 +668,33 @@ async function revolutRequest(pid) {
   window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener");
 }
 
+function aiKeyModal(then) {
+  openModal({
+    title: "Ligar a IA (Gemini)",
+    sub: "Só precisas de fazer isto uma vez neste dispositivo.",
+    body: `<ol class="how">
+        <li>Abre o <a class="link" href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a> com a tua conta Google.</li>
+        <li>Toca em <b>Create API key</b> e copia a chave (começa por <b>AIza…</b>). É gratuita.</li>
+        <li>Cola-a aqui em baixo.</li>
+      </ol>
+      <div class="field"><input class="input" id="akKey" type="password" placeholder="AIza…" value="${esc(settings.geminiKey)}" autocomplete="off" spellcheck="false"></div>
+      <div class="note"><i class="fa-solid fa-lock"></i> A chave fica guardada só neste dispositivo e é enviada apenas para a Google. Não vai nos links de partilha nem nos backups.</div>`,
+    foot: `<button class="btn ghost" data-close>Cancelar</button><button class="btn primary" id="akOk"><i class="fa-solid fa-check"></i> Guardar</button>`,
+    onMount: m => {
+      const input = m.querySelector("#akKey");
+      m.querySelector("#akOk").onclick = () => {
+        const key = input.value.trim();
+        if (!/^[A-Za-z0-9_\-]{30,}$/.test(key)) return toast("Essa chave não parece válida (deve começar por AIza…).", "warn");
+        settings.geminiKey = key;
+        persist();
+        closeModal();
+        toast("IA ligada ✓");
+        then?.();
+      };
+    },
+  });
+}
+
 function revolutUserModal(then) {
   openModal({
     title: "O teu utilizador Revolut",
@@ -775,6 +809,12 @@ async function prepareFile(file) {
 }
 
 async function parseWithAI(files, feedback = null) {
+  // Com chave pessoal (ou sem servidor), fala diretamente com a Gemini.
+  if (aiKey() && !HAS_SERVER) {
+    const { receipt } = await callGemini({ apiKey: aiKey(), files, feedback, models: aiModels() });
+    return receipt;
+  }
+  if (!HAS_SERVER) throw Object.assign(new Error("Falta a chave Gemini. Adiciona-a para a IA ler os recibos."), { code: "NO_KEY" });
   let backendError = "";
   try {
     const res = await fetch(API_ENDPOINT, {
@@ -790,15 +830,19 @@ async function parseWithAI(files, feedback = null) {
   } catch (err) {
     backendError = "Sem ligação ao servidor de IA.";
   }
-  if (settings.geminiKey) {
-    const { receipt } = await callGemini({ apiKey: settings.geminiKey, files, feedback });
+  if (aiKey()) {
+    const { receipt } = await callGemini({ apiKey: aiKey(), files, feedback, models: aiModels() });
     return receipt;
   }
-  throw new Error(`${backendError} Configura GEMINI_API_KEY no Netlify ou uma chave pessoal nas Definições.`);
+  throw Object.assign(new Error(`${backendError} Adiciona a tua chave Gemini nas Definições.`), { code: "NO_KEY" });
 }
 
 function enqueue(files, { sameReceipt = false } = {}) {
   if (ui.readonly) return;
+  if (!HAS_SERVER && !aiKey()) {
+    const pending = [...files];
+    return aiKeyModal(() => enqueue(pending, { sameReceipt }));
+  }
   const list = [...files].filter(f => /^image\//.test(f.type) || f.type === "application/pdf" || /\.(pdf|heic|jpe?g|png|webp)$/i.test(f.name));
   if (!list.length) { toast("Escolhe imagens ou PDFs.", "warn"); return; }
   const groups = sameReceipt ? [list] : list.map(f => [f]);
@@ -849,7 +893,7 @@ async function runJob(job) {
   } catch (err) {
     console.error(err);
     job.running = false;
-    setJob(job, { error: err?.message || "Não foi possível ler o recibo." });
+    setJob(job, { error: err?.message || "Não foi possível ler o recibo.", needsKey: err?.code === "NO_KEY" || /api key|API_KEY|permission|403/i.test(err?.message || "") });
   }
   render();
   pumpJobs();
@@ -1036,6 +1080,10 @@ const actions = {
   "job-retry"(el) {
     const j = ui.jobs.find(x => x.id === el.dataset.j);
     if (j) { j.error = null; j.status = "Na fila…"; render(); pumpJobs(); }
+  },
+  "ai-key"(el) {
+    const j = ui.jobs.find(x => x.id === el.dataset.j);
+    aiKeyModal(() => { if (j) { j.error = null; j.needsKey = false; j.status = "Na fila…"; render(); pumpJobs(); } });
   },
   "job-remove"(el) { ui.jobs = ui.jobs.filter(x => x.id !== el.dataset.j); render(); },
   "person-toggle"(el) {
@@ -1937,7 +1985,7 @@ function settingsModal() {
         <button class="toggle ${settings.newItemsAll ? "on" : ""}" id="sAll" aria-label="Novos para todos"></button></div>
       <div class="setting"><div><strong>Utilizador Revolut</strong><span>Adiciona o teu link revolut.me nas mensagens de cobrança.</span></div>
         <input class="input" id="sRev" style="width:160px" placeholder="@utilizador" value="${esc(settings.revolutUser)}"></div>
-      <div class="setting"><div><strong>Chave Gemini pessoal</strong><span>Opcional. Só é usada se o servidor (Netlify) não tiver GEMINI_API_KEY. Fica guardada apenas neste dispositivo.</span></div>
+      <div class="setting"><div><strong>Chave Gemini</strong><span>${HAS_SERVER || CONFIG.geminiKey ? "Opcional: o site já tem chave configurada. Uma chave aqui tem prioridade." : "Necessária para a IA ler recibos."} Gratuita em <a class="link" href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com</a>. Fica só neste dispositivo.</span></div>
         <input class="input" id="sKey" type="password" style="width:160px" placeholder="AIza…" value="${esc(settings.geminiKey)}" autocomplete="off"></div>
       ${isStandalone() ? "" : `<div class="setting"><div><strong>Instalar no telemóvel</strong><span>Ícone no ecrã principal, ecrã inteiro e partilha de fotos da galeria para a app.</span></div><button class="btn sm" id="sInstall"><i class="fa-solid fa-mobile-screen-button"></i> Instalar</button></div>`}
       <div class="setting"><div><strong>Dados</strong><span>Backup de tudo (pessoas, divisões e memória).</span></div>
