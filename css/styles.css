@@ -518,3 +518,5 @@ html, body { max-width: 100%; overflow-x: hidden; }
   .r-warn .warn-actions { flex-direction: row; width: 100%; margin-left: 22px; flex-wrap: wrap; }
 }
 .r-discounts .chip { white-space: normal; text-align: left; line-height: 1.35; }
+.item-price .per-unit { font-size: 11px; color: var(--faint); margin-top: 2px; }
+#uEq .pill { cursor: pointer; }

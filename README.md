@@ -12,9 +12,10 @@ Divide recibos entre amigos sem fazer contas. Tiras uma foto (ou carregas uma im
   - descontos gerais **em percentagem** (por exemplo, Billa Klub −10 %) tiram essa percentagem a cada artigo;
   - cupões de **valor fixo** (por exemplo, Tesco −50 Kč) são repartidos em proporção ao preço;
   - em ambos os casos podes aplicar o desconto a todos os artigos ou só aos que escolheres.
+  - cupões que nomeiam um produto (por exemplo, Tesco "CC GER SMETANO.SYR -15,00") ficam associados a esse produto; os que não são explícitos são repartidos por todos.
 - **Verificação do total**: compara a soma dos artigos com o total impresso e permite corrigir a diferença com um clique.
 - **Atribuição rápida**: botões por pessoa, "Todos", **pincel** para atribuir muitos artigos seguidos, e **partes diferentes** por pessoa.
-- **Por unidade**: em artigos com várias unidades (por exemplo, 3 croissants), escolhes quantas leva cada pessoa (1 para mim e 2 para a Inês), incluindo meias unidades.
+- **Por unidade**: artigos com várias unidades mostram o preço por unidade e o total (por exemplo, 4 × 37,90 = 151,60). Podes dividir as unidades igualmente entre quem escolheres (4 por 8, 4 por 2…) ou à mão (3 + 1), e os valores já contam com os descontos.
 - **Memória**: da próxima vez que comprares o mesmo artigo, a app sugere as mesmas pessoas.
 - **Despesas sem recibo** (Uber, renda, jantar…): campo aberto com descrição, valor, moeda, quem pagou e por quem se divide.
 - **Grupos** (por exemplo, "Casa" ou "Eu e a Filipa"): atalhos em cada artigo, no pincel e nas despesas, e servem também para criar uma divisão só com esse grupo.

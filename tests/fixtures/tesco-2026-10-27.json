@@ -1,0 +1,347 @@
+{
+ "store": "Tesco",
+ "location": "Brno Bohunice",
+ "date": "2026-10-27",
+ "time": "16:55",
+ "currency": "CZK",
+ "subtotal": 1804.86,
+ "total": 1347.55,
+ "items": [
+  {
+   "original": "BROSKVE PULENE 210g",
+   "translated": "Pêssegos em metades 210 g",
+   "quantity": 1,
+   "unit": "un",
+   "unitPrice": null,
+   "price": 56.9
+  },
+  {
+   "original": "TS PASÍR. RAJČ. 500g",
+   "translated": "Polpa de tomate 500 g",
+   "quantity": 3,
+   "unit": "un",
+   "unitPrice": 21.9,
+   "price": 65.7
+  },
+  {
+   "original": "TS TRTIN. CUKR 500 g",
+   "translated": "Açúcar mascavado 500 g",
+   "quantity": 1,
+   "unit": "un",
+   "unitPrice": null,
+   "price": 29.9
+  },
+  {
+   "original": "NES CREMA ROZ.K.275g",
+   "translated": "Café Nescafé Crema 275 g",
+   "quantity": 1,
+   "unit": "un",
+   "unitPrice": null,
+   "price": 254.9
+  },
+  {
+   "original": "GER SMETANO.SYR 180g",
+   "translated": "Queijo creme Gervais 180 g",
+   "quantity": 1,
+   "unit": "un",
+   "unitPrice": null,
+   "price": 54.9
+  },
+  {
+   "original": "FJK RAJ SUS 100 g",
+   "translated": "Tomate seco 100 g",
+   "quantity": 1,
+   "unit": "un",
+   "unitPrice": null,
+   "price": 62.9
+  },
+  {
+   "original": "JC MASLO 250 g",
+   "translated": "Manteiga 250 g",
+   "quantity": 2,
+   "unit": "un",
+   "unitPrice": 54.9,
+   "price": 109.8
+  },
+  {
+   "original": "GH CER.OLI.SL.NA.70g",
+   "translated": "Azeitonas pretas 70 g",
+   "quantity": 1,
+   "unit": "un",
+   "unitPrice": null,
+   "price": 16.9
+  },
+  {
+   "original": "TS DROZDI SUS. 6x7g",
+   "translated": "Fermento seco 6×7 g",
+   "quantity": 1,
+   "unit": "un",
+   "unitPrice": null,
+   "price": 21.9
+  },
+  {
+   "original": "TS MLEKO BZL 1 L",
+   "translated": "Leite sem lactose 1 L",
+   "quantity": 2,
+   "unit": "un",
+   "unitPrice": 18.9,
+   "price": 37.8
+  },
+  {
+   "original": "TS MOUKA HLADKA 1kg",
+   "translated": "Farinha fina 1 kg",
+   "quantity": 2,
+   "unit": "un",
+   "unitPrice": 9.9,
+   "price": 19.8
+  },
+  {
+   "original": "DR.O BOU.VAN.ARO.10g",
+   "translated": "Aroma de baunilha Dr. Oetker",
+   "quantity": 2,
+   "unit": "un",
+   "unitPrice": 24.9,
+   "price": 49.8
+  },
+  {
+   "original": "V WORCESTR OM 160 ml",
+   "translated": "Molho Worcestershire 160 ml",
+   "quantity": 1,
+   "unit": "un",
+   "unitPrice": null,
+   "price": 31.9
+  },
+  {
+   "original": "TS KURECI FILETKY OA",
+   "translated": "Filetes de frango",
+   "quantity": 0.395,
+   "unit": "kg",
+   "unitPrice": 244.9,
+   "price": 96.74
+  },
+  {
+   "original": "TS GRANA PADAN.100 g",
+   "translated": "Grana Padano 100 g",
+   "quantity": 1,
+   "unit": "un",
+   "unitPrice": null,
+   "price": 48.9
+  },
+  {
+   "original": "K SKORICE MLETA 25 g",
+   "translated": "Canela moída 25 g",
+   "quantity": 1,
+   "unit": "un",
+   "unitPrice": null,
+   "price": 29.9
+  },
+  {
+   "original": "MUSK.ORECH ML 18g",
+   "translated": "Noz-moscada moída 18 g",
+   "quantity": 1,
+   "unit": "un",
+   "unitPrice": null,
+   "price": 34.9
+  },
+  {
+   "original": "TS GOUDA STR. 200 g",
+   "translated": "Gouda ralado 200 g",
+   "quantity": 2,
+   "unit": "un",
+   "unitPrice": 41.9,
+   "price": 83.8
+  },
+  {
+   "original": "TS KRUTI MLETE 500g",
+   "translated": "Carne de peru picada 500 g",
+   "quantity": 1,
+   "unit": "un",
+   "unitPrice": null,
+   "price": 60.0
+  },
+  {
+   "original": "TS FI.AL.TRESKA 400g",
+   "translated": "Filetes de escamudo 400 g",
+   "quantity": 1,
+   "unit": "un",
+   "unitPrice": null,
+   "price": 91.9
+  },
+  {
+   "original": "TS VEJCE M 10 ks",
+   "translated": "Ovos M 10 un",
+   "quantity": 1,
+   "unit": "un",
+   "unitPrice": null,
+   "price": 49.9
+  },
+  {
+   "original": "PEJ BAČAJ.KLO.K.100g",
+   "translated": "Chouriço 100 g",
+   "quantity": 1,
+   "unit": "un",
+   "unitPrice": null,
+   "price": 34.9
+  },
+  {
+   "original": "TS MOZZARELLA 200 g",
+   "translated": "Mozzarella 200 g",
+   "quantity": 1,
+   "unit": "un",
+   "unitPrice": null,
+   "price": 41.9
+  },
+  {
+   "original": "TS EIDAM 30% 200 g",
+   "translated": "Edam 30% 200 g",
+   "quantity": 1,
+   "unit": "un",
+   "unitPrice": null,
+   "price": 41.9
+  },
+  {
+   "original": "TS EMENTALER 200 g",
+   "translated": "Emmental 200 g",
+   "quantity": 1,
+   "unit": "un",
+   "unitPrice": null,
+   "price": 41.9
+  },
+  {
+   "original": "PRES PR.PLA.SYR 100g",
+   "translated": "Queijo President 100 g",
+   "quantity": 1,
+   "unit": "un",
+   "unitPrice": null,
+   "price": 51.9
+  },
+  {
+   "original": "TS TESTO PIZZA 400g",
+   "translated": "Massa de pizza 400 g",
+   "quantity": 4,
+   "unit": "un",
+   "unitPrice": 37.9,
+   "price": 151.6
+  },
+  {
+   "original": "TS KAPIA PAPRIKA kg",
+   "translated": "Pimento kapia",
+   "quantity": 0.228,
+   "unit": "kg",
+   "unitPrice": 79.9,
+   "price": 18.22
+  },
+  {
+   "original": "TS Zamp. hn.250g",
+   "translated": "Cogumelos castanhos 250 g",
+   "quantity": 1,
+   "unit": "un",
+   "unitPrice": null,
+   "price": 39.9
+  },
+  {
+   "original": "TS Zamp. zah.250 g",
+   "translated": "Cogumelos 250 g",
+   "quantity": 1,
+   "unit": "un",
+   "unitPrice": null,
+   "price": 39.9
+  },
+  {
+   "original": "BAGETKA MALA SV. 65g",
+   "translated": "Baguete pequena 65 g",
+   "quantity": 2,
+   "unit": "un",
+   "unitPrice": 3.9,
+   "price": 7.8
+  },
+  {
+   "original": "MULTI.CROI.MASL.65g",
+   "translated": "Croissant multicereais 65 g",
+   "quantity": 2,
+   "unit": "un",
+   "unitPrice": 12.9,
+   "price": 25.8
+  }
+ ],
+ "discounts": [
+  {
+   "label": "KUPON ISIC 10% SLEVA",
+   "translated": "Cupão ISIC 10%",
+   "amount": 153.62,
+   "percent": 10,
+   "appliesTo": null
+  },
+  {
+   "label": "KUPON N2202 SLEVA",
+   "translated": "Cupão N2202",
+   "amount": 100,
+   "percent": null,
+   "appliesTo": null
+  },
+  {
+   "label": "KUPON N2106 LAHUDKY",
+   "translated": "Cupão charcutaria",
+   "amount": 10,
+   "percent": null,
+   "appliesTo": null
+  },
+  {
+   "label": "KUPON N2104 NEALKO",
+   "translated": "Cupão bebidas sem álcool",
+   "amount": 10,
+   "percent": null,
+   "appliesTo": null
+  },
+  {
+   "label": "CC GER SMETANO.SYR 1",
+   "translated": "Clubcard queijo creme",
+   "amount": 15,
+   "percent": null,
+   "appliesTo": "GER SMETANO.SYR 180g"
+  },
+  {
+   "label": "CC NES CREMA ROZ.K.2",
+   "translated": "Clubcard Nescafé",
+   "amount": 85,
+   "percent": null,
+   "appliesTo": "NES CREMA ROZ.K.275g"
+  },
+  {
+   "label": "CC DR.O BOU.VAN.ARO.",
+   "translated": "Clubcard baunilha",
+   "amount": 10,
+   "percent": null,
+   "appliesTo": null
+  },
+  {
+   "label": "CC FJK RAJ SUS 100 g",
+   "translated": "Clubcard tomate seco",
+   "amount": 23,
+   "percent": null,
+   "appliesTo": null
+  },
+  {
+   "label": "CC PEJ BACAJ.KLO.K.1",
+   "translated": "Clubcard chouriço",
+   "amount": 10,
+   "percent": null,
+   "appliesTo": null
+  },
+  {
+   "label": "CC TS KURECI FILETKY",
+   "translated": "Clubcard frango",
+   "amount": 25.68,
+   "percent": null,
+   "appliesTo": "TS KURECI FILETKY OA"
+  },
+  {
+   "label": "CC TS KRUTI MLETE 50",
+   "translated": "Clubcard peru",
+   "amount": 15.01,
+   "percent": null,
+   "appliesTo": null
+  }
+ ],
+ "warnings": []
+}

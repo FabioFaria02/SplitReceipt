@@ -244,9 +244,60 @@ export function parseAmount(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Corrige erros típicos da IA antes de conferir o total:
+ * com quantidade > 1, o preço da linha nunca é o preço unitário (ex.: 4 × 37,90 = 151,60).
+ */
+export function repairRawReceipt(raw) {
+  if (!raw || !Array.isArray(raw.items)) return raw;
+  const items = raw.items.map(it => {
+    const q = parseAmount(it.quantity);
+    const u = parseAmount(it.unitPrice);
+    const p = parseAmount(it.price);
+    if (!(q > 1 && u > 0 && p != null)) return it;
+    const lineTotal = round2(q * u);
+    if (Math.abs(p - u) > 0.005 || Math.abs(lineTotal - p) <= 0.02) return it;
+    const discount = Math.abs(parseAmount(it.discount) || 0);
+    const base = parseAmount(it.basePrice);
+    return {
+      ...it,
+      basePrice: base == null || Math.abs(base - u) <= 0.005 ? lineTotal : base,
+      price: round2((base == null || Math.abs(base - u) <= 0.005 ? lineTotal : base) - discount),
+    };
+  });
+  return { ...raw, items };
+}
+
+const COUPON_STOP = new Set(["cc", "kupon", "sleva", "slevy", "clubcard", "coupon", "rabat", "ts", "cupao", "desconto", "discount", "akce"]);
+const nameTokens = s => String(s || "")
+  .toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  .split(/[^a-z0-9]+/)
+  .filter(t => t.length >= 2 && !/\d/.test(t));
+
+/** Procura o artigo a que um desconto se refere pelo nome (nomes truncados, ex.: Tesco "CC GER SMETANO.SYR 1"). */
+export function matchItemByName(text, items) {
+  const exact = items.filter(it => it.original && it.original.trim().toLowerCase() === String(text || "").trim().toLowerCase());
+  if (exact.length === 1) return exact[0];
+  const want = nameTokens(text).filter(t => !COUPON_STOP.has(t));
+  if (!want.length) return null;
+  const tokMatch = (a, b) => a === b || (a.length >= 3 && b.length >= 3 && (a.startsWith(b) || b.startsWith(a)));
+  let best = null, bestScore = 0, tie = false;
+  for (const it of items) {
+    const have = nameTokens(it.original).filter(t => !COUPON_STOP.has(t));
+    const score = want.filter(w => have.some(h => tokMatch(w, h))).length;
+    if (score > bestScore) { best = it; bestScore = score; tie = false; }
+    else if (score === bestScore && score > 0) tie = true;
+  }
+  const needed = want.length === 1 ? 1 : Math.max(2, Math.ceil(want.length * 0.6));
+  if (!best || tie || bestScore < needed) return null;
+  if (want.length === 1 && want[0].length < 5) return null;
+  return best;
+}
+
 /** Normaliza a resposta da IA (ou JSON importado) para o modelo interno. */
 export function normalizeReceipt(raw, makeId) {
   const id = makeId || (() => Math.random().toString(36).slice(2, 10));
+  raw = repairRawReceipt(raw);
   const items = (Array.isArray(raw?.items) ? raw.items : [])
     .map(it => {
       const price = parseAmount(it.price ?? it.czk ?? it.total ?? it.amount);
@@ -283,6 +334,7 @@ export function normalizeReceipt(raw, makeId) {
       percent: Math.abs(parseAmount(d.percent) || 0) || null,
       target: d.target === "items" ? "items" : "all",
       itemIds: Array.isArray(d.itemIds) ? d.itemIds : [],
+      appliesTo: d.appliesTo ? String(d.appliesTo).trim() : "",
     }))
     .filter(d => d.amount > 0 || d.percent > 0);
   const legacyGeneral = Math.abs(parseAmount(raw?.generalDiscountCzk) || 0);
@@ -290,15 +342,29 @@ export function normalizeReceipt(raw, makeId) {
     discounts.push({ id: id(), label: "Desconto geral", translated: "Desconto geral", amount: legacyGeneral, target: "all", itemIds: [] });
   }
 
-  // "10 %" no nome do desconto: guarda como percentagem se bater com a soma dos artigos.
+  // Percentagem: só se bater com a soma dos artigos (senão fica valor fixo, repartido por todos).
   const itemsSum = items.reduce((s, it) => s + it.price, 0);
   for (const d of discounts) {
-    if (d.percent > 0 && d.percent <= 100) continue;
-    d.percent = null;
     const m = `${d.label} ${d.translated}`.match(/(\d{1,2}(?:[.,]\d+)?)\s*%/);
-    const pct = m ? parseAmount(m[1]) : null;
-    if (pct > 0 && itemsSum > 0 && Math.abs(itemsSum * pct / 100 - d.amount) <= Math.max(0.05, d.amount * 0.01)) d.percent = pct;
+    const candidates = [d.percent, m ? parseAmount(m[1]) : null].filter(x => x > 0 && x <= 100);
+    d.percent = null;
+    for (const pct of candidates) {
+      if (!(itemsSum > 0)) break;
+      if (!d.amount || Math.abs(itemsSum * pct / 100 - d.amount) <= Math.max(0.05, d.amount * 0.01)) { d.percent = pct; break; }
+    }
   }
+
+  // Cupões que nomeiam um produto (ex.: Tesco "CC GER SMETANO.SYR 1 -15,00") passam a desconto desse artigo.
+  for (const d of [...discounts]) {
+    if (d.percent > 0 || !(d.amount > 0) || d.target === "items") continue;
+    const it = (d.appliesTo && matchItemByName(d.appliesTo, items)) || matchItemByName(d.label, items);
+    if (!it || d.amount > it.price + 0.01) continue;
+    it.discount = round2(it.discount + d.amount);
+    it.price = round2(it.price - d.amount);
+    it.discountLabel = [it.discountLabel, d.label].filter(Boolean).join(" + ");
+    discounts.splice(discounts.indexOf(d), 1);
+  }
+  discounts.forEach(d => { delete d.appliesTo; });
 
   const currency = String(raw?.currency || "").toUpperCase().trim() || (raw?.totalCzk != null ? "CZK" : "EUR");
   return {

@@ -21,21 +21,28 @@ STEP 1 — TRANSCRIBE ("lines")
 - For each line: "text" = the text as printed (without the VAT letter), "amount" = the number printed in the right-hand price column on THAT SAME line, or null if that line has no price in the right column.
 - Read each amount straight across from its own line. Never move a price up or down to a neighbouring line.
 
-STEP 2 — ITEMS (one entry per product line that has its own price in the right column)
-- Every line whose "amount" is not null and that is a product becomes exactly one item, and its price is exactly that line's amount. The number of items must equal the number of priced product lines (ignoring 0,00 lines and totals).
-- Quantity / weight detail lines have NO price in the right column. They are NOT items. Merge them into the product they belong to, e.g. "3 ks x 9,90 Kč/ks", "2 x 3,90", "N 0,130 kg (V) x 149,00 Kč/kg", tare lines like "0,002 kg (PT)" or "PT: 0,002 kg".
-- These detail lines are printed AFTER the product in some stores (Lidl, Kaufland) and BEFORE the product in others (Billa, Albert, Penny). ALWAYS decide by arithmetic: the detail belongs to the product whose own line price equals quantity × unitPrice (±0,01). Never change a product's price to make a detail line fit.
+STEP 2 — ITEMS (one entry per purchased product)
+- A product = its name line + (optionally) ONE quantity/weight detail line, e.g. "3 ks x 9,90 Kč/ks", "4 * 37,90 Kč", "2 x 3,90", "N 0,130 kg (V) x 149,00 Kč/kg", "0,395 kg * 244,90 Kč/kg". Tare lines like "0,002 kg (PT)" / "PT: 0,002 kg" are ignored.
+- The item's price is the LINE TOTAL = the single right-column amount that belongs to that product. Depending on the store it is printed:
+    • on the name line, with the detail line AFTER it (Lidl, Kaufland),
+    • on the name line, with the detail line BEFORE it (Billa, Albert, Penny),
+    • on the detail line under the name, while the name line has no amount (Tesco, Globus).
+  ALWAYS decide by arithmetic: price = quantity × unitPrice (±0,01). When quantity > 1 the price is NEVER the unit price.
+- Every product becomes exactly one item: never merge two products, never skip one, never split one product into its units.
+- Tesco example (total on the detail line):
+    TS TESTO PIZZA 400g                      → name line, no amount
+    4 * 37,90 Kč                     151,60  → item price 151,60, quantity 4, unitPrice 37,90
+    JC MASLO 250 g / 2 * 54,90 Kč    109,80  → item price 109,80, quantity 2, unitPrice 54,90
+    TS KURECI FILETKY OA / 0,395 kg * 244,90 Kč/kg  96,74 → price 96,74, quantity 0,395 kg
+    BROSKVE PULENE 210g              56,90   → price 56,90, quantity 1
 - Billa example (detail lines come BEFORE their product):
     CV KUCHYŇSKÉ ROLE            C   22,90   → item price 22,90 (quantity 1)
     2,000 ks x 11,90 Kč/ks                   → 2 × 11,90 = 23,80 → belongs to the NEXT line
     CV OVES. VLOČKY JEM          B   23,80   → item price 23,80, quantity 2, unitPrice 11,90
-    BURTY                        B   74,90   → item price 74,90 (quantity 1)
     N 0,970 kg (V) x 22,90 Kč/kg             → 0,970 × 22,90 = 22,21 → NEXT line
     0,002 kg (PT)                            → tare, ignore
     BANÁNY                       B   22,21   → item price 22,21, quantity 0,970 kg
     CLEVER                       B  139,90   → its own item, price 139,90
-    N 0,218 kg (V) x 149,00 Kč/kg            → 32,48 → NEXT line
-    ČESNEK VOLNÝ                 B   32,48   → item price 32,48, quantity 0,218 kg
     2,000 ks x 0,00 Kč/ks / KUPON NAROZENINY 0,00 → ignore (zero value)
     Mezisoučet 726,29 = sum of all item prices; BILLA KLUB NAROZENINY 10 % -72,63 → general discount; Celkem 653,66 = total.
 - Ignore lines whose amount is 0 (e.g. "BK KUPON KC 0,00", "UVÍTACÍ KUPÓN 0,00"), VAT tables (DPH, VAT, ÁFA, PTU, IVA), payment/card lines, loyalty points, change, subtotal and total lines.
@@ -49,12 +56,13 @@ STEP 2 — ITEMS (one entry per product line that has its own price in the right
 - translated: a short, natural European Portuguese (pt-PT) name. Expand abbreviations, keep brand names. Examples: "Jemný kečup" → "Ketchup suave", "Hamburger. housky" → "Pães de hambúrguer", "Olomoucké tvarůžky" → "Queijo de Olomouc (tvarůžky)", "ČESNEK VOLNÝ" → "Alho avulso", "Mleté maso mix" → "Carne picada mista", "Bochník šum. 500g" → "Pão de forma Šumava 500 g".
 - category: one of ${CATEGORIES.join(", ")}. emoji: one fitting emoji.
 
-GENERAL DISCOUNTS ("discounts")
-- ONLY coupons/discounts that apply to the whole purchase or cannot be safely tied to one product (e.g. Tesco Clubcard vouchers, "Kupón -10 %" at the end, staff discount). amount is positive.
-- If a coupon clearly names a single product, put it as that product's line discount instead.
-- A percentage discount printed after the subtotal (e.g. Billa "BILLA KLUB NAROZENINY 10 % -72,63", "Sleva 10 %") is a general discount: put it in "discounts" with amount = the printed amount (72.63) and percent = the percentage (10). For fixed-value coupons, percent = null.
-- Summary lines such as Lidl "Celková sleva" or Tesco "Clubcard savings" only REPEAT line discounts already listed: do NOT add them again.
-- Never count the same discount twice.
+DISCOUNTS PRINTED AFTER THE PRODUCTS ("discounts")
+- Discount lines printed after the products / after the subtotal go in "discounts" (amount positive, as printed). Each one has "appliesTo":
+    • if the discount line names a product, appliesTo = the "original" text of THAT item, copied exactly from your items. Tesco Clubcard "CC <product>" lines always name a product: "CC GER SMETANO.SYR 1 -15,00" → appliesTo "GER SMETANO.SYR 180g"; "CC NES CREMA ROZ.K.2 -85,00" → appliesTo "NES CREMA ROZ.K.275g"; "CC TS KURECI FILETKY -25,68" → appliesTo "TS KURECI FILETKY OA". The names are truncated: match by the first words.
+    • if it applies to the whole purchase or you cannot tell which product (e.g. "KUPON ISIC 10% SLEVA", "KUPON N2104 NEALKO", "Billa Klub 10 %", staff discount), appliesTo = null.
+- percent = the percentage only when the line prints one (e.g. "10 %"), else null.
+- Summary lines such as Lidl "Celková sleva", Tesco "celková úspora" / "S CLUBCARD jste dnes ušetřili" only REPEAT other discounts: do NOT add them.
+- Never count the same discount twice, and never also put these after-subtotal discounts inside items.
 
 TOTALS AND METADATA
 - total = final amount paid as printed (K PLATBĚ, Celkem, Celková zaplacená částka, Razem/SUMA PLN, Összesen, Total, TOTAL A PAGAR…).
@@ -117,6 +125,7 @@ export const SCHEMA = {
           translated: { type: "STRING" },
           amount: { type: "NUMBER" },
           percent: nullableNumber,
+          appliesTo: { type: "STRING", nullable: true },
         },
         required: ["label", "amount"],
       },
@@ -166,7 +175,8 @@ export function correctionMessage(check) {
 Re-read the receipt image line by line from the top:
 1. Rewrite "lines" completely, one entry per printed line, with the amount from the right-hand column of that same line.
 2. Make sure every priced product line is an item (look for skipped short names), and that no price was shifted to the line above or below.
-3. Quantity/weight lines (e.g. "2,000 ks x 11,90", "N 0,970 kg x 22,90") belong to the product whose price equals quantity × unit price — in Billa/Albert/Penny that is the product BELOW them.
+3. Each item price is the LINE TOTAL (quantity × unit price), never the unit price: Tesco "TS TESTO PIZZA 400g / 4 * 37,90 Kč 151,60" → price 151,60. Quantity/weight lines (e.g. "2,000 ks x 11,90", "N 0,970 kg x 22,90") belong to the product whose price equals quantity × unit price — in Billa/Albert/Penny that is the product BELOW them, in Tesco the total is printed on the quantity line itself.
+4. Discounts printed after the subtotal that name a product (Tesco "CC ...") need "appliesTo" with that item's original name.
 Return the complete corrected JSON.`;
 }
 

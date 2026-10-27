@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   receiptBreakdown, splitSummary, settleDebts, allocateCents, normalizeReceipt,
-  parseAmount, normalizeDate, memoryKey,
+  parseAmount, normalizeDate, memoryKey, repairRawReceipt, matchItemByName,
 } from "../js/calc.js";
 
 let n = 0;
@@ -138,4 +138,42 @@ test("cupão de valor fixo continua proporcional", () => {
   const b = receiptBreakdown(r, [A]);
   assert.equal(b.perItem[r.items[0].id].effective, 9);
   assert.equal(b.perItem[r.items[1].id].effective, 27);
+});
+
+test("Tesco: preço unitário lido como total é corrigido (4 × 37,90 = 151,60)", () => {
+  const raw = JSON.parse(readFileSync(new URL("./fixtures/tesco-2026-10-27-misread.json", import.meta.url)));
+  const fixed = repairRawReceipt(raw);
+  const pizza = fixed.items.find(i => i.original.includes("PIZZA"));
+  assert.equal(pizza.price, 151.6);
+  assert.equal(Math.round(fixed.items.reduce((s, i) => s + i.price, 0) * 100), 180486);
+});
+
+test("Tesco: cupões CC ficam no artigo certo, os gerais repartidos, total confere", () => {
+  const raw = JSON.parse(readFileSync(new URL("./fixtures/tesco-2026-10-27-misread.json", import.meta.url)));
+  const r = normalizeReceipt(raw, id);
+  const byName = n => r.items.find(i => i.original.startsWith(n));
+  assert.equal(byName("GER SMETANO").discount, 15);
+  assert.equal(byName("NES CREMA").discount, 85);
+  assert.equal(byName("DR.O BOU").discount, 10);
+  assert.equal(byName("FJK RAJ").discount, 23);
+  assert.equal(byName("PEJ BA").discount, 10);
+  assert.equal(byName("TS KURECI").discount, 25.68);
+  assert.equal(byName("TS KRUTI").discount, 15.01);
+  assert.equal(byName("TS MLEKO").discount, 0);
+  // ISIC "10 %" não bate com 10 % da soma → fica valor fixo repartido por todos
+  assert.deepEqual(r.discounts.map(d => [d.label, d.amount, d.percent]), [
+    ["KUPON ISIC 10% SLEVA", 153.62, null], ["KUPON N2202 SLEVA", 100, null],
+    ["KUPON N2106 LAHUDKY", 10, null], ["KUPON N2104 NEALKO", 10, null],
+  ]);
+  r.rate = 1;
+  const b = receiptBreakdown(r, [A]);
+  assert.equal(Math.round(b.computedTotal * 100), 134755);
+  assert.equal(b.mismatch, 0);
+});
+
+test("matchItemByName não associa cupões genéricos", () => {
+  const items = [{ original: "BILLA GRANA PADANO" }, { original: "TS MLEKO BZL 1 L" }];
+  assert.equal(matchItemByName("BILLA KLUB NAROZENINY 10 %", items), null);
+  assert.equal(matchItemByName("KUPON N2104 NEALKO", items), null);
+  assert.equal(matchItemByName("CC TS MLEKO BZL", items), items[1]);
 });

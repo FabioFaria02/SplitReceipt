@@ -1,4 +1,4 @@
-import { splitSummary, receiptBreakdown, memoryKey, normalizeReceipt, parseAmount, round2 } from "./calc.js";
+import { splitSummary, receiptBreakdown, memoryKey, normalizeReceipt, parseAmount, round2, repairRawReceipt } from "./calc.js";
 import { callGemini, CATEGORIES, checkReceipt, correctionMessage, DEFAULT_MODELS } from "./ai.js";
 import { CONFIG } from "./config.js";
 import { fetchRate, CURRENCIES, currencySymbol } from "./rates.js";
@@ -444,9 +444,11 @@ function renderItem(r, it, info, parts) {
   const cur = r.currency;
   const assigned = Object.keys(info.weights);
   const tags = [];
+  const nUnits = unitCount(it);
+  const unitPrice = it.unitPrice || (it.quantity > 0 ? it.basePrice / it.quantity : null);
   if (it.quantity && it.quantity !== 1) {
     const q = it.unit === "kg" || it.unit === "l" ? `${fmtNum(it.quantity, 3)} ${it.unit}` : `${fmtNum(it.quantity, 0)} un`;
-    tags.push(`<span class="tag">${q}${it.unitPrice ? ` × ${fmtMoney(it.unitPrice, cur)}` : ""}</span>`);
+    tags.push(`<span class="tag">${q}${unitPrice ? ` × ${fmtMoney(unitPrice, cur)}${it.unit === "kg" || it.unit === "l" ? `/${it.unit}` : ""} = ${fmtMoney(it.basePrice, cur)}` : ""}</span>`);
   }
   if (it.discount > 0) tags.push(`<span class="tag disc"><i class="fa-solid fa-tag"></i>−${fmtMoney(it.discount, cur)}${it.discountLabel ? ` · ${esc(it.discountLabel)}` : ""}${r.lineDiscountMode === "spread" ? " (espalhado)" : ""}</span>`);
   if (info.discountShare > 0.004 && r.discounts.length) {
@@ -469,6 +471,7 @@ function renderItem(r, it, info, parts) {
       <div class="item-price">
         <strong>${eur(info.eur)}</strong>
         ${cur !== "EUR" ? `<span>${it.discount > 0 && r.lineDiscountMode !== "spread" ? `<s>${fmtMoney(it.basePrice, cur)}</s> ` : ""}${fmtMoney(info.effective, cur)}</span>` : it.discount > 0 && r.lineDiscountMode !== "spread" ? `<span><s>${eur(it.basePrice)}</s></span>` : ""}
+        ${nUnits ? `<span class="per-unit">${eur(info.eur / nUnits)}/un</span>` : ""}
       </div>
     </div>
     ${peoplePills(it, info, parts, r)}
@@ -871,13 +874,13 @@ async function runJob(job) {
     const prepared = job.prepared ? [...job.prepared] : [];
     if (!job.prepared) for (const f of job.files) prepared.push(await prepareFile(f));
     setJob(job, { status: "A IA está a ler os artigos, descontos e total…" });
-    let raw = await parseWithAI(prepared);
+    let raw = repairRawReceipt(await parseWithAI(prepared));
     let check = checkReceipt(raw);
     // Se a soma não bate com o total, pede à IA para reler (até 2 vezes) e fica com a melhor leitura.
     for (let attempt = 1; !check.ok && attempt <= 2; attempt++) {
       setJob(job, { status: `A soma não bate certo (${fmtNum(Math.abs(check.diff))}) — a IA está a reler o recibo (${attempt}/2)…` });
       try {
-        const retry = await parseWithAI(prepared, { previous: JSON.stringify(raw), message: correctionMessage(check) });
+        const retry = repairRawReceipt(await parseWithAI(prepared, { previous: JSON.stringify(raw), message: correctionMessage(check) }));
         const c2 = checkReceipt(retry);
         if (Math.abs(c2.diff) < Math.abs(check.diff) || (c2.ok && !check.ok)) { raw = retry; check = c2; }
       } catch (err) {
@@ -1306,7 +1309,7 @@ function itemModal(rid, iid) {
   const cur = r.currency;
   const sym = currencySymbol(cur);
   const weights = { ...it.shares };
-  const canSplitUnits = !isNew && it.unit === "un" && Number.isInteger(it.quantity) && it.quantity >= 2 && it.quantity <= 30;
+  const canSplitUnits = !isNew;
 
   openModal({
     title: isNew ? "Adicionar artigo" : "Editar artigo",
@@ -1316,10 +1319,13 @@ function itemModal(rid, iid) {
         <div class="field"><label>Nome em português</label><input class="input" id="fTr" value="${esc(it.translated)}" placeholder="Ex.: Manteiga"></div>
         <div class="field"><label>Nome original</label><input class="input" id="fOr" value="${esc(it.original)}" placeholder="Ex.: Máslo"></div>
       </div>
-      <div class="grid3">
-        <div class="field"><label>Preço (${sym})</label><input class="input num" id="fBase" inputmode="decimal" value="${it.basePrice ? fmtNum(it.basePrice) : ""}" placeholder="0,00"></div>
-        <div class="field"><label>Desconto (${sym})</label><input class="input num" id="fDisc" inputmode="decimal" value="${it.discount ? fmtNum(it.discount) : ""}" placeholder="0,00"></div>
+      <div class="grid2">
         <div class="field"><label>Quantidade</label><input class="input num" id="fQty" inputmode="decimal" value="${fmtNum(it.quantity, it.quantity % 1 ? 3 : 0)}"></div>
+        <div class="field"><label>Preço por ${it.unit === "kg" || it.unit === "l" ? it.unit : "unidade"} (${sym})</label><input class="input num" id="fUnit" inputmode="decimal" value="${it.basePrice ? fmtNum(it.unitPrice || it.basePrice / (it.quantity || 1)) : ""}" placeholder="0,00"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Total da linha (${sym})</label><input class="input num" id="fBase" inputmode="decimal" value="${it.basePrice ? fmtNum(it.basePrice) : ""}" placeholder="0,00"><span class="hint">= quantidade × preço por unidade</span></div>
+        <div class="field"><label>Desconto do artigo (${sym})</label><input class="input num" id="fDisc" inputmode="decimal" value="${it.discount ? fmtNum(it.discount) : ""}" placeholder="0,00"><span class="hint">sobre o total da linha</span></div>
       </div>
       <div class="grid2">
         <div class="field"><label>Categoria</label><select class="select input" id="fCat">${CATEGORIES.map(c => `<option value="${c}" ${c === it.category ? "selected" : ""}>${CATEGORY[c][1]} ${CATEGORY[c][0]}</option>`).join("")}</select></div>
@@ -1343,6 +1349,25 @@ function itemModal(rid, iid) {
       };
       let drawWeights = () => {};
       ["#fBase", "#fDisc"].forEach(s => q(s).addEventListener("input", drawFinal));
+      // Quantidade × preço unitário ⇄ total da linha
+      const qty = () => parseAmount(q("#fQty").value) || 1;
+      const fromUnit = () => {
+        const u = parseAmount(q("#fUnit").value);
+        if (u != null) q("#fBase").value = fmtNum(round2(u * qty()));
+        drawFinal(); toggleUnitsBtns();
+      };
+      q("#fQty").addEventListener("input", fromUnit);
+      q("#fUnit").addEventListener("input", fromUnit);
+      q("#fBase").addEventListener("input", () => {
+        const t = parseAmount(q("#fBase").value);
+        if (t != null) q("#fUnit").value = fmtNum(round2(t / qty()));
+      });
+      const toggleUnitsBtns = () => {
+        const n = qty();
+        const ok = !isNew && Number.isInteger(n) && n >= 2 && n <= 99 && it.unit !== "kg" && it.unit !== "l";
+        m.querySelectorAll("#fUnitsPick, #fUnits").forEach(b => b.classList.toggle("hidden", !ok));
+        if (q("#fUnitsPick")) q("#fUnitsPick").innerHTML = `<i class="fa-solid fa-cubes-stacked"></i> ${Number.isInteger(n) ? n : ""} unidades`;
+      };
       const rateNow = () => (r.eurCharged > 0 ? receiptBreakdown(r, split.participants).factor : r.rate || 1);
       drawWeights = weightsEditor(q("#fWeights"), weights, () => final() * rateNow());
       drawFinal();
@@ -1355,9 +1380,11 @@ function itemModal(rid, iid) {
           original: q("#fOr").value.trim() || q("#fTr").value.trim(),
           basePrice: round2(base), discount: round2(disc), price: round2(base - disc),
           quantity: parseAmount(q("#fQty").value) || 1,
+          unitPrice: parseAmount(q("#fUnit").value),
           category: q("#fCat").value, emoji: q("#fEmoji").value.trim(),
         });
       };
+      toggleUnitsBtns();
       q("#fSave").onclick = () => {
         collect();
         if (!it.price && !it.basePrice) return toast("Indica o preço.", "warn");
@@ -1371,7 +1398,15 @@ function itemModal(rid, iid) {
         closeModal();
         withUndo("Artigo apagado.", () => { r.items = r.items.filter(x => x.id !== it.id); });
       });
-      q("#fUnitsPick") && (q("#fUnitsPick").onclick = () => unitsModal(rid, it.id));
+      // Guarda primeiro (preço/quantidade podem ter sido corrigidos) e abre a divisão por unidades.
+      q("#fUnitsPick") && (q("#fUnitsPick").onclick = () => {
+        collect();
+        it.unit = "un";
+        setShares(it, { ...weights });
+        r.items[r.items.findIndex(x => x.id === it.id)] = it;
+        commit();
+        unitsModal(rid, it.id);
+      });
       q("#fUnits") && (q("#fUnits").onclick = () => {
         collect();
         const n = it.quantity;
@@ -1406,14 +1441,17 @@ function unitsModal(rid, iid) {
 
   openModal({
     title: `${n} × ${esc(name)}`,
-    sub: `${eur(unitEur)} por unidade${r.currency !== "EUR" ? ` (${fmtMoney(info.effective / n, r.currency)})` : ""} · escolhe quantas leva cada um`,
-    body: `<div class="unit-strip" id="uStrip"></div><div id="uRows"></div>
+    sub: `${eur(unitEur)} por unidade · total ${eur(info.eur)}${r.currency !== "EUR" ? ` (${fmtMoney(info.effective / n, r.currency)}/un · ${fmtMoney(info.effective, r.currency)})` : ""}${info.effective < info.base - 0.004 ? " · já com descontos" : ""}`,
+    body: `<div class="unit-strip" id="uStrip"></div>
+      <div class="field" style="margin:4px 0 6px"><span class="lbl">Dividir igualmente entre</span>
+        <div class="pills" id="uEq"></div><span class="hint" id="uEqHint"></span></div>
+      <div class="field" style="margin:10px 0 0"><span class="lbl">Ou escolhe quantas leva cada um (ex.: 3 + 1)</span></div>
+      <div id="uRows"></div>
       <div class="pills" style="margin-top:12px">
-        <button type="button" class="btn sm" id="uEach"><i class="fa-solid fa-equals"></i> Igual por todos</button>
         <button type="button" class="btn sm" id="uRest"><i class="fa-solid fa-user-plus"></i> Restantes por todos</button>
         <button type="button" class="btn sm ghost" id="uClear"><i class="fa-solid fa-eraser"></i> Limpar</button>
       </div>
-      <div class="note">Podes usar meias unidades (ex.: 0,5) se uma unidade for partilhada.</div>`,
+      <div class="note">Aceita frações (ex.: 0,5) quando uma unidade é partilhada.</div>`,
     foot: `<span class="u-status left" id="uStatus"></span><button class="btn ghost" data-close>Cancelar</button><button class="btn primary" id="uSave">Guardar</button>`,
     onMount: m => {
       const q = sel => m.querySelector(sel);
@@ -1430,6 +1468,12 @@ function unitsModal(rid, iid) {
         }
         while (chips.length < n) chips.push(`<span class="unit free">${esc(itemEmoji(it))}</span>`);
         q("#uStrip").innerHTML = chips.join("");
+        const chosen = parts.filter(p => units[p.id] > 0).map(p => p.id);
+        const equal = chosen.length > 0 && new Set(chosen.map(id => units[id])).size === 1 && Math.abs(left) < 0.005;
+        q("#uEq").innerHTML = `<button type="button" class="pill all mini ${equal && chosen.length === parts.length ? "on" : ""}" data-eq="all">Todos (${parts.length})</button>`
+          + activeGroups().map(g => `<button type="button" class="pill group mini ${equal && sameSet(chosen, g.members) ? "on" : ""}" data-eq="g:${g.id}"><i class="fa-solid fa-user-group"></i>${esc(g.name)}</button>`).join("")
+          + parts.map(p => `<button type="button" class="pill mini ${chosen.includes(p.id) && equal ? "on" : ""}" style="--c:${p.color}" data-eq="p:${p.id}">${avatar(p)}${esc(p.name)}</button>`).join("");
+        q("#uEqHint").textContent = equal ? `${n} ÷ ${chosen.length} = ${fmtNum(n / chosen.length, (n / chosen.length) % 1 ? 2 : 0)} un cada · ${eur(unitEur * n / chosen.length)} cada` : "Toca nas pessoas para dividir igualmente entre elas.";
         q("#uRows").innerHTML = parts.map(p => {
           const v = units[p.id] || 0;
           return `<div class="weight-row">${avatar(p)}<span class="name">${esc(p.name)}</span>
@@ -1454,7 +1498,25 @@ function unitsModal(rid, iid) {
         set(i.dataset.u, parseAmount(i.value) || 0);
         draw();
       });
-      q("#uEach").onclick = () => { Object.keys(units).forEach(k => delete units[k]); parts.forEach(p => set(p.id, n / parts.length)); draw(); };
+      // Dividir igualmente: Todos, um grupo, ou ir tocando nas pessoas (cada toque junta/tira).
+      const equalBetween = ids => {
+        Object.keys(units).forEach(k => delete units[k]);
+        ids.forEach(id => { units[id] = n / ids.length; });
+        draw();
+      };
+      q("#uEq").addEventListener("click", e => {
+        const b = e.target.closest("[data-eq]");
+        if (!b) return;
+        const v = b.dataset.eq;
+        if (v === "all") return equalBetween(parts.map(p => p.id));
+        if (v.startsWith("g:")) return equalBetween(activeGroups().find(g => g.id === v.slice(2))?.members || []);
+        const pid = v.slice(2);
+        const current = new Set(parts.filter(p => units[p.id] > 0).map(p => p.id));
+        const wasEqual = current.size && new Set([...current].map(id => units[id])).size === 1 && Math.abs(sum() - n) < 0.005;
+        const base = wasEqual ? current : new Set();
+        base.has(pid) ? base.delete(pid) : base.add(pid);
+        equalBetween(parts.map(p => p.id).filter(id => base.has(id)));
+      });
       q("#uRest").onclick = () => {
         const left = n - sum();
         if (left <= 0) return;
